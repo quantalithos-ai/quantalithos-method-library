@@ -1,0 +1,28 @@
+[package]
+name = "method_library_api"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[features]
+default = []
+p1-plugin = []
+p1-configuration = []
+
+[dependencies]
+axum.workspace = true
+http.workspace = true
+method_library_application = { path = "../method_library_application" }
+method_library_contracts = { path = "../method_library_contracts" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+tower.workspace = true
+
+[lints]
+workspace = true

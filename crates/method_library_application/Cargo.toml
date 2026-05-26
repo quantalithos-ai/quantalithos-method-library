@@ -1,0 +1,22 @@
+[package]
+name = "method_library_application"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[features]
+default = []
+p1-plugin = []
+p1-configuration = []
+
+[dependencies]
+async-trait.workspace = true
+method_library_contracts = { path = "../method_library_contracts" }
+method_library_domain = { path = "../method_library_domain" }
+serde.workspace = true
+thiserror.workspace = true
+time.workspace = true
+
+[lints]
+workspace = true

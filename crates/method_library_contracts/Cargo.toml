@@ -1,0 +1,20 @@
+[package]
+name = "method_library_contracts"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[features]
+default = []
+p1-plugin = []
+p1-configuration = []
+
+[dependencies]
+method_library_domain = { path = "../method_library_domain" }
+serde.workspace = true
+serde_json.workspace = true
+time.workspace = true
+
+[lints]
+workspace = true

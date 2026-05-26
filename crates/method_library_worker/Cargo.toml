@@ -1,0 +1,22 @@
+[package]
+name = "method_library_worker"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[features]
+default = []
+p1-plugin = []
+p1-configuration = []
+
+[dependencies]
+method_library_application = { path = "../method_library_application" }
+method_library_contracts = { path = "../method_library_contracts" }
+serde.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,34 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: method_library
+          POSTGRES_PASSWORD: method_library
+          POSTGRES_USER: method_library
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U method_library -d method_library"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      DATABASE_URL: postgres://method_library:method_library@localhost:5432/method_library
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cargo fmt
+        run: cargo fmt --all --check
+      - name: Cargo check
+        run: cargo check --workspace
+      - name: Cargo test
+        run: cargo test --workspace
