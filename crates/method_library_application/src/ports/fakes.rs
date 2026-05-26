@@ -29,12 +29,16 @@ use super::{
     MethodContentVersionRecord, MethodContentVersionRepository, ObjectStoragePort,
     ObservabilityEvent, ObservabilityPort, OutboxEvent, OutboxRepository, OutboxStatus,
     PageRequest, ProjectionCheckpointRecord, ProjectionCheckpointRepository, PublishAck, ResultRef,
-    SupersedeLink, SupersedeLinkRepository, Topic, UnitOfWork, UnitOfWorkTx,
+    SupersedeLink, SupersedeLinkRepository, Topic, TransactionDriver, UnitOfWork, UnitOfWorkTx,
 };
 
 /// In-memory unit-of-work implementation.
 #[derive(Debug, Default, Clone)]
 pub struct FakeUnitOfWork;
+
+/// No-op transaction driver used by fake unit-of-work tokens.
+#[derive(Debug, Default)]
+struct NoopTransactionDriver;
 
 /// Deterministic clock used by tests.
 #[derive(Debug, Clone)]
@@ -256,7 +260,24 @@ impl InMemoryProjectionCheckpointRepository {
 #[async_trait]
 impl UnitOfWork for FakeUnitOfWork {
     async fn begin(&self, meta: RequestMeta) -> Result<UnitOfWorkTx, MethodLibraryError> {
-        Ok(UnitOfWorkTx::new(meta))
+        Ok(UnitOfWorkTx::new(meta, Arc::new(NoopTransactionDriver)))
+    }
+}
+
+#[async_trait]
+impl TransactionDriver for NoopTransactionDriver {
+    async fn commit(
+        &self,
+        _request_id: &method_library_domain::content::RequestId,
+    ) -> Result<(), MethodLibraryError> {
+        Ok(())
+    }
+
+    async fn rollback(
+        &self,
+        _request_id: &method_library_domain::content::RequestId,
+    ) -> Result<(), MethodLibraryError> {
+        Ok(())
     }
 }
 

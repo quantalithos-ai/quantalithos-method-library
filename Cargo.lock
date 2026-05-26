@@ -921,13 +921,16 @@ dependencies = [
 name = "method_library_infra"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "method_library_application",
  "method_library_contracts",
  "method_library_domain",
  "serde",
+ "serde_json",
  "sqlx",
  "thiserror",
  "time",
+ "tokio",
  "tracing",
 ]
 

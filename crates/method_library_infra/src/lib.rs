@@ -1,5 +1,7 @@
 //! Infrastructure adapters and persistence helpers for the method-library service.
 
+pub mod persistence;
+
 /// Verifies that the infrastructure crate is linked into the workspace.
 #[must_use]
 pub fn adapter_name() -> &'static str {

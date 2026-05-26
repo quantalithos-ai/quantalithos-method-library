@@ -1,6 +1,7 @@
 //! Application-facing ports, transaction tokens, and durable record models.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -120,13 +121,23 @@ pub struct FailureReason {
     pub retryable: bool,
 }
 
+/// Driver used by a unit-of-work token to commit or roll back the backing transaction.
+#[async_trait]
+pub trait TransactionDriver: Send + Sync {
+    /// Commits the backing transaction identified by the request id.
+    async fn commit(&self, request_id: &RequestId) -> Result<(), MethodLibraryError>;
+
+    /// Rolls back the backing transaction identified by the request id.
+    async fn rollback(&self, request_id: &RequestId) -> Result<(), MethodLibraryError>;
+}
+
 /// Transaction token passed to repository ports.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UnitOfWorkTx {
     /// Request metadata that opened the transaction.
     pub request_meta: RequestMeta,
     /// Whether the transaction is still open.
     pub state: TransactionState,
+    driver: Arc<dyn TransactionDriver>,
 }
 
 /// State of a unit-of-work transaction.
@@ -395,16 +406,18 @@ pub struct PageRequest {
 impl UnitOfWorkTx {
     /// Creates a new open transaction token.
     #[must_use]
-    pub fn new(request_meta: RequestMeta) -> Self {
+    pub fn new(request_meta: RequestMeta, driver: Arc<dyn TransactionDriver>) -> Self {
         Self {
             request_meta,
             state: TransactionState::Open,
+            driver,
         }
     }
 
     /// Commits the transaction token.
     pub async fn commit(&mut self) -> Result<(), MethodLibraryError> {
         self.ensure_open()?;
+        self.driver.commit(&self.request_meta.request_id).await?;
         self.state = TransactionState::Committed;
         Ok(())
     }
@@ -412,6 +425,7 @@ impl UnitOfWorkTx {
     /// Rolls back the transaction token.
     pub async fn rollback(&mut self) -> Result<(), MethodLibraryError> {
         self.ensure_open()?;
+        self.driver.rollback(&self.request_meta.request_id).await?;
         self.state = TransactionState::RolledBack;
         Ok(())
     }
@@ -426,6 +440,22 @@ impl UnitOfWorkTx {
         }
 
         Ok(())
+    }
+
+    /// Returns the request identifier associated with the transaction.
+    #[must_use]
+    pub fn request_id(&self) -> &RequestId {
+        &self.request_meta.request_id
+    }
+}
+
+impl std::fmt::Debug for UnitOfWorkTx {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("UnitOfWorkTx")
+            .field("request_id", &self.request_meta.request_id)
+            .field("state", &self.state)
+            .finish()
     }
 }
 
