@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{MethodLibraryError, MethodLibraryErrorCode};
 
+/// Canonical byte buffer used as fingerprint input.
+pub type CanonicalBytes = Vec<u8>;
 /// Fingerprint hashing algorithm identifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

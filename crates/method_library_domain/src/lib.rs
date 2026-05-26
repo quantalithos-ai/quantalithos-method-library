@@ -1,7 +1,9 @@
 //! Domain primitives and business rules for the method-library service.
 
 pub mod content;
+pub mod definitions;
 pub mod error;
+pub mod policies;
 
 pub use content::{
     ActorId, BatchSize, CanonicalFingerprint, CanonicalSchemaVersion, ContentFamilyId, ContentId,
@@ -10,4 +12,5 @@ pub use content::{
     PublishedContentRef, ReferenceState, RequestHash, RequestId, Revision, SnapshotId, Timestamp,
     TraceId, VersionScheme, WorkerId,
 };
+pub use definitions::MethodContentPayload;
 pub use error::{MethodLibraryError, MethodLibraryErrorCode};
