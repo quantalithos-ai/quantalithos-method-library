@@ -2,6 +2,10 @@
 
 use method_library_contracts::PlaceholderContract;
 
+pub mod ports;
+
+pub use ports::*;
+
 /// Minimal application surface kept intentionally small for the workspace bootstrap phase.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BootstrapService;
@@ -16,7 +20,7 @@ impl BootstrapService {
 
 #[cfg(test)]
 mod tests {
-    use super::BootstrapService;
+    use super::{BootstrapService, ports::FeatureFlag};
 
     #[test]
     fn describes_workspace_placeholder() {
@@ -25,6 +29,14 @@ mod tests {
         assert_eq!(
             service.describe().message,
             "method-library contracts placeholder"
+        );
+    }
+
+    #[test]
+    fn reexports_feature_flags() {
+        assert_eq!(
+            serde_json::to_string(&FeatureFlag::P1Plugin).expect("feature flag should serialize"),
+            "\"p1_plugin\""
         );
     }
 }

@@ -890,8 +890,10 @@ dependencies = [
  "method_library_contracts",
  "method_library_domain",
  "serde",
+ "serde_json",
  "thiserror",
  "time",
+ "tokio",
 ]
 
 [[package]]
