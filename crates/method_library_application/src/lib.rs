@@ -3,8 +3,10 @@
 use method_library_contracts::PlaceholderContract;
 
 pub mod ports;
+pub mod services;
 
 pub use ports::*;
+pub use services::MethodContentCommandService;
 
 /// Minimal application surface kept intentionally small for the workspace bootstrap phase.
 #[derive(Debug, Clone, PartialEq, Eq)]

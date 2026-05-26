@@ -15,8 +15,11 @@ axum.workspace = true
 http.workspace = true
 method_library_application = { path = "../method_library_application" }
 method_library_contracts = { path = "../method_library_contracts" }
+method_library_domain = { path = "../method_library_domain" }
+sha2.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+time.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
