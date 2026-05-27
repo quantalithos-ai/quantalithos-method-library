@@ -624,6 +624,10 @@ pub trait UnitOfWork: Send + Sync {
 /// Write-model repository for method-content aggregates.
 #[async_trait]
 pub trait MethodContentRepository: Send + Sync {
+    /// Reads one aggregate without opening a write transaction.
+    async fn get(&self, content_id: ContentId)
+    -> Result<Option<MethodContent>, MethodLibraryError>;
+
     /// Reads one aggregate for update.
     async fn get_for_update(
         &self,
@@ -665,6 +669,12 @@ pub trait MethodContentReferenceRepository: Send + Sync {
         source_content_id: ContentId,
         refs: Vec<PublishedContentRef>,
     ) -> Result<(), MethodLibraryError>;
+
+    /// Reads the published references for one source content aggregate.
+    async fn get_published_refs(
+        &self,
+        source_content_id: ContentId,
+    ) -> Result<Vec<PublishedContentRef>, MethodLibraryError>;
 }
 
 /// Repository for version-history records.
@@ -676,6 +686,13 @@ pub trait MethodContentVersionRepository: Send + Sync {
         tx: &mut UnitOfWorkTx,
         record: MethodContentVersionRecord,
     ) -> Result<(), MethodLibraryError>;
+
+    /// Reads one version-history record for a published version.
+    async fn get(
+        &self,
+        content_id: ContentId,
+        version: ContentVersion,
+    ) -> Result<Option<MethodContentVersionRecord>, MethodLibraryError>;
 }
 
 /// Repository for supersede links.

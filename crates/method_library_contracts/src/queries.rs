@@ -276,6 +276,8 @@ pub struct ListMethodContentsQuery {
 /// Response DTO for listing content aggregates.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ListMethodContentsResponse {
+    /// Response schema version.
+    pub schema_version: ApiSchemaVersion,
     /// Summary items.
     pub items: Vec<ContentSummaryView>,
     /// Pagination metadata.
@@ -298,8 +300,12 @@ pub struct GetMethodContentVersionQuery {
 /// Response DTO for retrieving a published content version.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GetMethodContentVersionResponse {
+    /// Response schema version.
+    pub schema_version: ApiSchemaVersion,
     /// Published version view.
     pub content_version: ContentVersionView,
+    /// Read consistency marker.
+    pub consistency: ReadConsistency,
 }
 
 /// Query DTO for exporting a definition snapshot.

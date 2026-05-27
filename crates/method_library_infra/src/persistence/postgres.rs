@@ -403,6 +403,26 @@ impl UnitOfWork for PostgresUnitOfWork {
 
 #[async_trait]
 impl MethodContentRepository for PostgresMethodContentRepository {
+    async fn get(
+        &self,
+        content_id: ContentId,
+    ) -> Result<Option<MethodContent>, MethodLibraryError> {
+        let row = sqlx::query(&format!(
+            "select content_json from {METHOD_CONTENTS_TABLE} where content_id = $1"
+        ))
+        .bind(&content_id)
+        .fetch_optional(&self.state.pool)
+        .await
+        .map_err(map_sqlx_error)?;
+
+        row.map(|row| -> Result<MethodContent, MethodLibraryError> {
+            let Json(content): Json<MethodContent> =
+                row.try_get("content_json").map_err(map_sqlx_error)?;
+            MethodContent::rehydrate(content)
+        })
+        .transpose()
+    }
+
     async fn get_for_update(
         &self,
         tx: &mut UnitOfWorkTx,
@@ -597,6 +617,28 @@ impl MethodContentReferenceRepository for PostgresMethodContentReferenceReposito
 
         Ok(())
     }
+
+    async fn get_published_refs(
+        &self,
+        source_content_id: ContentId,
+    ) -> Result<Vec<PublishedContentRef>, MethodLibraryError> {
+        let rows = sqlx::query(&format!(
+            "select reference_json from {METHOD_CONTENT_REFERENCES_TABLE} where source_content_id = $1 and reference_kind = $2 order by target_content_id"
+        ))
+        .bind(&source_content_id)
+        .bind("published")
+        .fetch_all(&self.state.pool)
+        .await
+        .map_err(map_sqlx_error)?;
+
+        rows.into_iter()
+            .map(|row| -> Result<PublishedContentRef, MethodLibraryError> {
+                let Json(reference): Json<PublishedContentRef> =
+                    row.try_get("reference_json").map_err(map_sqlx_error)?;
+                Ok(reference)
+            })
+            .collect()
+    }
 }
 
 #[async_trait]
@@ -639,6 +681,30 @@ impl MethodContentVersionRepository for PostgresMethodContentVersionRepository {
                 }
             }
         }
+    }
+
+    async fn get(
+        &self,
+        content_id: ContentId,
+        version: ContentVersion,
+    ) -> Result<Option<MethodContentVersionRecord>, MethodLibraryError> {
+        let row = sqlx::query(&format!(
+            "select version_json from {METHOD_CONTENT_VERSIONS_TABLE} where content_id = $1 and version_text = $2"
+        ))
+        .bind(&content_id)
+        .bind(&version.raw)
+        .fetch_optional(&self.state.pool)
+        .await
+        .map_err(map_sqlx_error)?;
+
+        row.map(
+            |row| -> Result<MethodContentVersionRecord, MethodLibraryError> {
+                let Json(record): Json<MethodContentVersionRecord> =
+                    row.try_get("version_json").map_err(map_sqlx_error)?;
+                Ok(record)
+            },
+        )
+        .transpose()
     }
 }
 
@@ -1135,29 +1201,21 @@ impl ContentSummaryProjectionRepository for PostgresContentSummaryProjectionRepo
         page: &PageRequest,
     ) -> Result<Vec<ContentSummaryView>, MethodLibraryError> {
         let mut sql = format!("select view_json from {SUMMARY_TABLE} where 1 = 1");
-        let mut conditions = Vec::new();
+        let mut conditions: Vec<String> = Vec::new();
+        let mut bind_index = 1;
+        if query.read_mode == method_library_contracts::ReadMode::Published {
+            conditions.push("lifecycle_state in ('published', 'deprecated')".to_string());
+        }
         if query.kind.is_some() {
-            conditions.push("kind = $1");
+            conditions.push(format!("kind = ${bind_index}"));
+            bind_index += 1;
         }
         if query.lifecycle_state.is_some() {
-            conditions.push(if query.kind.is_some() {
-                "lifecycle_state = $2"
-            } else {
-                "lifecycle_state = $1"
-            });
+            conditions.push(format!("lifecycle_state = ${bind_index}"));
+            bind_index += 1;
         }
         if page.cursor.is_some() {
-            let offset = if query.kind.is_some() { 1 } else { 0 }
-                + if query.lifecycle_state.is_some() {
-                    1
-                } else {
-                    0
-                };
-            conditions.push(match offset {
-                0 => "content_id > $1",
-                1 => "content_id > $2",
-                _ => "content_id > $3",
-            });
+            conditions.push(format!("content_id > ${bind_index}"));
         }
         if !conditions.is_empty() {
             sql.push_str(" and ");
@@ -1474,8 +1532,8 @@ mod tests {
     };
     use method_library_application::{MethodContentCommandService, UnitOfWork};
     use method_library_contracts::{
-        ActorContext, EventTraceContext, PublishMethodContentCommand, RequestMeta,
-        SupersedeMethodContentCommand,
+        ActorContext, ContentSummaryView, EventTraceContext, ListMethodContentsQuery,
+        PublishMethodContentCommand, ReadMode, RequestMeta, SupersedeMethodContentCommand,
     };
     use method_library_domain::content::{
         ActorKind, ApprovedGateRef, CanonicalFingerprint, ContentVersion, FingerprintAlgorithm,
@@ -1582,6 +1640,24 @@ mod tests {
                 actor_id: "actor-1".to_string(),
                 actor_kind: ActorKind::Human,
             },
+        }
+    }
+
+    fn sample_summary_view(
+        content_id: &str,
+        lifecycle_state: LifecycleState,
+    ) -> ContentSummaryView {
+        ContentSummaryView {
+            content_id: content_id.to_string(),
+            kind: MethodContentKind::Qualification,
+            name: format!("Summary {content_id}"),
+            lifecycle_state,
+            version: matches!(
+                lifecycle_state,
+                LifecycleState::Published | LifecycleState::Deprecated
+            )
+            .then(|| ContentVersion::new("1.0.0").expect("version should be valid")),
+            updated_at: datetime!(2026-05-26 08:00:00 UTC),
         }
     }
 
@@ -1893,6 +1969,105 @@ mod tests {
             .expect_err("duplicate family version should fail");
         assert_eq!(error.code, MethodLibraryErrorCode::ContentVersionConflict);
         tx.rollback().await.expect("rollback should succeed");
+    }
+
+    #[tokio::test]
+    async fn repositories_support_read_only_query_methods() {
+        let _guard = test_guard();
+        let persistence = test_db().await;
+        let content_repository = persistence.method_content_repository();
+        let version_repository = persistence.method_content_version_repository();
+        let mut tx = persistence
+            .unit_of_work()
+            .begin(sample_meta())
+            .await
+            .expect("transaction should begin");
+        content_repository
+            .insert(&mut tx, sample_content())
+            .await
+            .expect("content insert should succeed");
+        version_repository
+            .insert(
+                &mut tx,
+                sample_version_record("ver-1", "content-1", "family-1", "1.0.0"),
+            )
+            .await
+            .expect("version insert should succeed");
+        tx.commit().await.expect("commit should succeed");
+
+        let content = content_repository
+            .get("content-1".to_string())
+            .await
+            .expect("read-only content query should succeed")
+            .expect("content should exist");
+        assert_eq!(content.content_id, "content-1");
+
+        let version = version_repository
+            .get(
+                "content-1".to_string(),
+                ContentVersion::new("1.0.0").expect("version should be valid"),
+            )
+            .await
+            .expect("read-only version query should succeed")
+            .expect("version record should exist");
+        assert_eq!(version.content_version_id, "ver-1");
+    }
+
+    #[tokio::test]
+    async fn summary_projection_repository_filters_published_reads() {
+        let _guard = test_guard();
+        let persistence = test_db().await;
+        let repository = persistence.content_summary_projection_repository();
+        repository
+            .upsert(sample_summary_view("content-draft", LifecycleState::Draft))
+            .await
+            .expect("draft summary should upsert");
+        repository
+            .upsert(sample_summary_view(
+                "content-published",
+                LifecycleState::Published,
+            ))
+            .await
+            .expect("published summary should upsert");
+
+        let published_items = repository
+            .list(
+                &ListMethodContentsQuery {
+                    kind: Some(MethodContentKind::Qualification),
+                    lifecycle_state: None,
+                    read_mode: ReadMode::Published,
+                    cursor: None,
+                    limit: 10,
+                    sort: Some("content_id".to_string()),
+                },
+                &PageRequest {
+                    cursor: None,
+                    limit: 10,
+                },
+            )
+            .await
+            .expect("published list query should succeed");
+        assert_eq!(published_items.len(), 1);
+        assert_eq!(published_items[0].content_id, "content-published");
+
+        let authoring_items = repository
+            .list(
+                &ListMethodContentsQuery {
+                    kind: Some(MethodContentKind::Qualification),
+                    lifecycle_state: None,
+                    read_mode: ReadMode::Authoring,
+                    cursor: None,
+                    limit: 10,
+                    sort: Some("content_id".to_string()),
+                },
+                &PageRequest {
+                    cursor: None,
+                    limit: 10,
+                },
+            )
+            .await
+            .expect("authoring list query should succeed");
+        assert_eq!(authoring_items.len(), 2);
     }
 
     #[tokio::test]

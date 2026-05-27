@@ -283,6 +283,13 @@ impl InMemoryLifecycleHistoryRepository {
     }
 }
 
+impl InMemoryAuditRepository {
+    /// Returns the stored audit records for inspection.
+    pub fn records(&self) -> Result<Vec<AuditRecord>, MethodLibraryError> {
+        Ok(lock(&self.records)?.clone())
+    }
+}
+
 impl InMemoryOutboxRepository {
     /// Returns the stored outbox records for inspection.
     pub fn events(&self) -> Result<HashMap<OutboxEventId, OutboxEvent>, MethodLibraryError> {
@@ -487,6 +494,13 @@ impl ObjectStoragePort for InMemoryObjectStorage {
 
 #[async_trait]
 impl MethodContentRepository for InMemoryMethodContentRepository {
+    async fn get(
+        &self,
+        content_id: ContentId,
+    ) -> Result<Option<MethodContent>, MethodLibraryError> {
+        Ok(lock(&self.contents)?.get(&content_id).cloned())
+    }
+
     async fn get_for_update(
         &self,
         tx: &mut UnitOfWorkTx,
@@ -565,6 +579,16 @@ impl MethodContentReferenceRepository for InMemoryMethodContentReferenceReposito
         lock(&self.published_refs)?.insert(source_content_id, refs);
         Ok(())
     }
+
+    async fn get_published_refs(
+        &self,
+        source_content_id: ContentId,
+    ) -> Result<Vec<PublishedContentRef>, MethodLibraryError> {
+        Ok(lock(&self.published_refs)?
+            .get(&source_content_id)
+            .cloned()
+            .unwrap_or_default())
+    }
 }
 
 #[async_trait]
@@ -577,6 +601,17 @@ impl MethodContentVersionRepository for InMemoryMethodContentVersionRepository {
         tx.ensure_open()?;
         lock(&self.records)?.push(record);
         Ok(())
+    }
+
+    async fn get(
+        &self,
+        content_id: ContentId,
+        version: ContentVersion,
+    ) -> Result<Option<MethodContentVersionRecord>, MethodLibraryError> {
+        Ok(lock(&self.records)?
+            .iter()
+            .find(|record| record.content_id == content_id && record.version == version)
+            .cloned())
     }
 }
 
@@ -895,6 +930,14 @@ impl ContentSummaryProjectionRepository for InMemoryContentSummaryProjectionRepo
     ) -> Result<Vec<ContentSummaryView>, MethodLibraryError> {
         let mut views = lock(&self.views)?
             .values()
+            .filter(|view| {
+                query.read_mode != method_library_contracts::ReadMode::Published
+                    || matches!(
+                        view.lifecycle_state,
+                        method_library_domain::content::LifecycleState::Published
+                            | method_library_domain::content::LifecycleState::Deprecated
+                    )
+            })
             .filter(|view| query.kind.is_none_or(|kind| view.kind == kind))
             .filter(|view| {
                 query

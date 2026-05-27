@@ -25,6 +25,10 @@ pub enum MethodLibraryErrorCode {
     ReferenceInvalid,
     /// A reference target existed but was not in a publishable state.
     ReferenceNotPublished,
+    /// A list query asked for more items than the configured page-size limit.
+    PageLimitExceeded,
+    /// A query filter or sort key was malformed or unsupported.
+    FilterInvalid,
     /// The requested method-content aggregate did not exist.
     MethodContentNotFound,
     /// A requested published version did not exist.
@@ -106,6 +110,8 @@ impl MethodLibraryErrorCode {
             Self::BoundaryViolation => "BOUNDARY_VIOLATION",
             Self::ReferenceInvalid => "REFERENCE_INVALID",
             Self::ReferenceNotPublished => "REFERENCE_NOT_PUBLISHED",
+            Self::PageLimitExceeded => "PAGE_LIMIT_EXCEEDED",
+            Self::FilterInvalid => "FILTER_INVALID",
             Self::MethodContentNotFound => "METHOD_CONTENT_NOT_FOUND",
             Self::ContentVersionNotFound => "CONTENT_VERSION_NOT_FOUND",
             Self::SnapshotNotFound => "SNAPSHOT_NOT_FOUND",
