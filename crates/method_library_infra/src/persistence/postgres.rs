@@ -1557,6 +1557,7 @@ mod tests {
         ActorContext, ContentSummaryView, EventTraceContext, ListMethodContentsQuery,
         PublishMethodContentCommand, ReadMode, RequestMeta, SupersedeMethodContentCommand,
     };
+    use method_library_domain::MethodLibraryErrorCode;
     use method_library_domain::content::{
         ActorKind, ApprovedGateRef, CanonicalFingerprint, ContentVersion, FingerprintAlgorithm,
         LifecycleState, MethodContent, MethodContentKind, PublishedContentRef,
@@ -2220,6 +2221,107 @@ mod tests {
             )
             .await
             .expect("publish should mark");
+    }
+
+    #[tokio::test]
+    async fn outbox_repository_retries_due_events_and_marks_dead_letter() {
+        let _guard = test_guard();
+        let persistence = test_db().await;
+        let outbox = persistence.outbox_repository();
+        let mut tx = persistence
+            .unit_of_work()
+            .begin(sample_meta())
+            .await
+            .expect("transaction should begin");
+        outbox
+            .append(
+                &mut tx,
+                sample_outbox_event("evt-retry", "content-retry", Some("idem-retry")),
+            )
+            .await
+            .expect("event should append");
+        tx.commit().await.expect("commit should succeed");
+
+        let claimed = outbox
+            .claim_pending(
+                10,
+                "worker-1".to_string(),
+                datetime!(2026-05-26 08:20:00 UTC),
+                time::Duration::minutes(5),
+            )
+            .await
+            .expect("event should claim");
+        assert_eq!(claimed.len(), 1);
+
+        outbox
+            .mark_retryable_failure(
+                "evt-retry".to_string(),
+                "worker-1".to_string(),
+                FailureReason {
+                    code: MethodLibraryErrorCode::BusPublishFailed,
+                    message: "temporary bus outage".to_string(),
+                    retryable: true,
+                },
+                datetime!(2026-05-26 08:25:00 UTC),
+            )
+            .await
+            .expect("retryable failure should mark");
+
+        let retryable_status: String = sqlx::query_scalar(&format!(
+            "select status from {OUTBOX_TABLE} where outbox_event_id = $1"
+        ))
+        .bind("evt-retry")
+        .fetch_one(&persistence.state.pool)
+        .await
+        .expect("status should be readable");
+        assert_eq!(retryable_status, "retryable_failed");
+
+        let before_due = outbox
+            .claim_pending(
+                10,
+                "worker-2".to_string(),
+                datetime!(2026-05-26 08:24:00 UTC),
+                time::Duration::minutes(5),
+            )
+            .await
+            .expect("event should not be claimable before the retry due time");
+        assert!(before_due.is_empty());
+
+        let retry_claim = outbox
+            .claim_pending(
+                10,
+                "worker-2".to_string(),
+                datetime!(2026-05-26 08:25:00 UTC),
+                time::Duration::minutes(5),
+            )
+            .await
+            .expect("retryable event should claim again after the due time");
+        assert_eq!(retry_claim.len(), 1);
+        assert_eq!(retry_claim[0].retry_count, 1);
+        assert_eq!(retry_claim[0].worker_id.as_deref(), Some("worker-2"));
+
+        outbox
+            .mark_dead_lettered(
+                "evt-retry".to_string(),
+                "worker-2".to_string(),
+                FailureReason {
+                    code: MethodLibraryErrorCode::OutboxEventInvalid,
+                    message: "payload requires manual intervention".to_string(),
+                    retryable: false,
+                },
+                datetime!(2026-05-26 08:26:00 UTC),
+            )
+            .await
+            .expect("dead-letter should mark");
+
+        let dead_letter_status: String = sqlx::query_scalar(&format!(
+            "select status from {OUTBOX_TABLE} where outbox_event_id = $1"
+        ))
+        .bind("evt-retry")
+        .fetch_one(&persistence.state.pool)
+        .await
+        .expect("dead-letter status should be readable");
+        assert_eq!(dead_letter_status, "dead_lettered");
     }
 
     #[tokio::test]

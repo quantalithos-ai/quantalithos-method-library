@@ -944,7 +944,9 @@ version = "0.1.0"
 dependencies = [
  "method_library_application",
  "method_library_contracts",
+ "method_library_domain",
  "serde",
+ "time",
  "tokio",
  "tracing",
  "tracing-subscriber",

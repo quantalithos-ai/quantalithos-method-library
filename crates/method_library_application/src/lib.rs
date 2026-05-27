@@ -5,10 +5,12 @@ use method_library_contracts::PlaceholderContract;
 pub mod ports;
 pub mod query_services;
 pub mod services;
+pub mod sync_services;
 
 pub use ports::*;
 pub use query_services::MethodContentQueryService;
 pub use services::MethodContentCommandService;
+pub use sync_services::{OutboxRelayPolicy, OutboxRelayService, OutboxRelayTopics};
 
 /// Minimal application surface kept intentionally small for the workspace bootstrap phase.
 #[derive(Debug, Clone, PartialEq, Eq)]
