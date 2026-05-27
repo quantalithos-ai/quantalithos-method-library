@@ -170,7 +170,7 @@ pub struct InMemoryInboundDeadLetterRepository {
 /// In-memory job-run repository.
 #[derive(Debug, Default, Clone)]
 pub struct InMemoryJobRunRepository {
-    records: Arc<Mutex<HashMap<(JobName, String), JobRunRecord>>>,
+    records: Arc<Mutex<HashMap<(JobName, String, IdempotencyKey), JobRunRecord>>>,
 }
 
 impl DeterministicClock {
@@ -518,6 +518,12 @@ impl MethodContentRepository for InMemoryMethodContentRepository {
         Ok(lock(&self.contents)?.get(&content_id).cloned())
     }
 
+    async fn list_all(&self) -> Result<Vec<MethodContent>, MethodLibraryError> {
+        let mut contents = lock(&self.contents)?.values().cloned().collect::<Vec<_>>();
+        contents.sort_by(|left, right| left.content_id.cmp(&right.content_id));
+        Ok(contents)
+    }
+
     async fn find_published_by_kind(
         &self,
         kind: MethodContentKind,
@@ -645,6 +651,19 @@ impl MethodContentVersionRepository for InMemoryMethodContentVersionRepository {
             .find(|record| record.content_id == content_id && record.version == version)
             .cloned())
     }
+
+    async fn list_by_content(
+        &self,
+        content_id: ContentId,
+    ) -> Result<Vec<MethodContentVersionRecord>, MethodLibraryError> {
+        let mut records = lock(&self.records)?
+            .iter()
+            .filter(|record| record.content_id == content_id)
+            .cloned()
+            .collect::<Vec<_>>();
+        records.sort_by(|left, right| left.published_at.cmp(&right.published_at));
+        Ok(records)
+    }
 }
 
 #[async_trait]
@@ -668,6 +687,19 @@ impl SupersedeLinkRepository for InMemorySupersedeLinkRepository {
         links.push(link);
         Ok(())
     }
+
+    async fn list_by_content(
+        &self,
+        content_id: ContentId,
+    ) -> Result<Vec<SupersedeLink>, MethodLibraryError> {
+        let mut links = lock(&self.links)?
+            .iter()
+            .filter(|link| link.old_content_id == content_id || link.new_content_id == content_id)
+            .cloned()
+            .collect::<Vec<_>>();
+        links.sort_by(|left, right| left.created_at.cmp(&right.created_at));
+        Ok(links)
+    }
 }
 
 #[async_trait]
@@ -681,6 +713,19 @@ impl LifecycleHistoryRepository for InMemoryLifecycleHistoryRepository {
         lock(&self.entries)?.push(entry);
         Ok(())
     }
+
+    async fn list_by_content(
+        &self,
+        content_id: ContentId,
+    ) -> Result<Vec<LifecycleHistoryEntry>, MethodLibraryError> {
+        let mut entries = lock(&self.entries)?
+            .iter()
+            .filter(|entry| entry.content_id == content_id)
+            .cloned()
+            .collect::<Vec<_>>();
+        entries.sort_by(|left, right| left.created_at.cmp(&right.created_at));
+        Ok(entries)
+    }
 }
 
 #[async_trait]
@@ -693,6 +738,19 @@ impl AuditRepository for InMemoryAuditRepository {
         tx.ensure_open()?;
         lock(&self.records)?.push(record);
         Ok(())
+    }
+
+    async fn list_by_content(
+        &self,
+        content_id: ContentId,
+    ) -> Result<Vec<AuditRecord>, MethodLibraryError> {
+        let mut records = lock(&self.records)?
+            .iter()
+            .filter(|record| record.target_ref.target_id == content_id)
+            .cloned()
+            .collect::<Vec<_>>();
+        records.sort_by(|left, right| left.occurred_at.cmp(&right.occurred_at));
+        Ok(records)
     }
 }
 
@@ -915,6 +973,40 @@ impl OutboxRepository for InMemoryOutboxRepository {
         })?;
         event.mark_dead_lettered(&worker_id, now)
     }
+
+    async fn list_replayable(
+        &self,
+        from_cursor: Option<OutboxEventId>,
+        event_types: Vec<method_library_contracts::DefinitionEventType>,
+        limit: super::BatchSize,
+    ) -> Result<Vec<OutboxEvent>, MethodLibraryError> {
+        let mut events = lock(&self.events)?
+            .values()
+            .filter(|event| {
+                from_cursor
+                    .as_ref()
+                    .is_none_or(|cursor| event.event_id > *cursor)
+                    && (event_types.is_empty() || event_types.contains(&event.envelope.event_type))
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        events.sort_by(|left, right| left.event_id.cmp(&right.event_id));
+        events.truncate(limit as usize);
+        Ok(events)
+    }
+
+    async fn list_by_aggregate(
+        &self,
+        aggregate_id: ContentId,
+    ) -> Result<Vec<OutboxEvent>, MethodLibraryError> {
+        let mut events = lock(&self.events)?
+            .values()
+            .filter(|event| event.aggregate_id == aggregate_id)
+            .cloned()
+            .collect::<Vec<_>>();
+        events.sort_by(|left, right| left.event_id.cmp(&right.event_id));
+        Ok(events)
+    }
 }
 
 #[async_trait]
@@ -1070,7 +1162,7 @@ impl JobRunRepository for InMemoryJobRunRepository {
         now: Timestamp,
     ) -> Result<JobRunStartResult, MethodLibraryError> {
         tx.ensure_open()?;
-        let composite_key = (job_name.clone(), scope_hash.clone());
+        let composite_key = (job_name.clone(), scope_hash.clone(), key.clone());
         let mut records = lock(&self.records)?;
 
         match records.get(&composite_key) {
@@ -1079,7 +1171,7 @@ impl JobRunRepository for InMemoryJobRunRepository {
             }
             Some(record) => Ok(JobRunStartResult::Existing(record.clone())),
             None => {
-                let job_run_id = format!("{job_name}:{scope_hash}");
+                let job_run_id = format!("{job_name}:{scope_hash}:{key}");
                 let record = JobRunRecord {
                     job_run_id: job_run_id.clone(),
                     job_name,
@@ -1153,7 +1245,7 @@ impl JobRunRepository for InMemoryJobRunRepository {
 }
 
 fn complete_job_run(
-    records: &Arc<Mutex<HashMap<(JobName, String), JobRunRecord>>>,
+    records: &Arc<Mutex<HashMap<(JobName, String, IdempotencyKey), JobRunRecord>>>,
     tx: &mut UnitOfWorkTx,
     job_run_id: JobRunId,
     status: JobRunStatus,

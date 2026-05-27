@@ -9,6 +9,7 @@ use method_library_application::ports::{
     ContentSummaryProjectionRepository, DefinitionSnapshotRepository,
     DefinitionTraceProjectionRepository, FailureReason, IdempotencyBeginResult,
     IdempotencyRepository, IdempotencyScope, InboundDeadLetter, InboundDeadLetterRepository,
+    JobResult, JobRunRecord, JobRunRepository, JobRunStartResult, JobRunStatus,
     LifecycleHistoryEntry, LifecycleHistoryRepository, MethodContentReferenceRepository,
     MethodContentRepository, MethodContentVersionRecord, MethodContentVersionRepository,
     OutboxEvent, OutboxRepository, OutboxStatus, PageRequest, ProjectionCheckpointRecord,
@@ -16,13 +17,13 @@ use method_library_application::ports::{
     TransactionDriver, UnitOfWork, UnitOfWorkTx,
 };
 use method_library_contracts::{
-    ContentSummaryView, DefinitionEventEnvelope, DefinitionSnapshot, DefinitionTraceView,
-    ListMethodContentsQuery, RequestMeta,
+    ContentSummaryView, DefinitionEventEnvelope, DefinitionEventType, DefinitionSnapshot,
+    DefinitionTraceView, ListMethodContentsQuery, RequestMeta,
 };
 use method_library_domain::content::{
-    ContentId, ContentVersion, IdempotencyKey, LeaseDuration, MethodContent, MethodContentKind,
-    OutboxEventId, PublishedContentRef, RequestHash, RequestId, Revision, SnapshotId, Timestamp,
-    WorkerId,
+    ContentId, ContentVersion, IdempotencyKey, JobName, JobRunId, LeaseDuration, MethodContent,
+    MethodContentKind, OutboxEventId, PublishedContentRef, RequestHash, RequestId, Revision,
+    SnapshotId, Timestamp, WorkerId,
 };
 use method_library_domain::{MethodLibraryError, MethodLibraryErrorCode};
 use serde_json::Value as JsonValue;
@@ -44,6 +45,7 @@ const SUMMARY_TABLE: &str = "content_summary_projection";
 const TRACE_TABLE: &str = "definition_trace_projection";
 const CHECKPOINT_TABLE: &str = "projection_checkpoints";
 const DEAD_LETTER_TABLE: &str = "inbound_dead_letters";
+const JOB_RUNS_TABLE: &str = "job_runs";
 
 const UNIQUE_VERSION_CONSTRAINT: &str =
     "method_content_versions_content_family_id_version_text_key";
@@ -151,6 +153,12 @@ pub struct PostgresProjectionCheckpointRepository {
 /// PostgreSQL dead-letter repository adapter.
 #[derive(Debug, Clone)]
 pub struct PostgresInboundDeadLetterRepository {
+    state: Arc<PostgresState>,
+}
+
+/// PostgreSQL job-run repository adapter.
+#[derive(Debug, Clone)]
+pub struct PostgresJobRunRepository {
     state: Arc<PostgresState>,
 }
 
@@ -301,6 +309,14 @@ impl PostgresPersistence {
             state: self.state.clone(),
         }
     }
+
+    /// Returns the job-run repository adapter.
+    #[must_use]
+    pub fn job_run_repository(&self) -> PostgresJobRunRepository {
+        PostgresJobRunRepository {
+            state: self.state.clone(),
+        }
+    }
 }
 
 impl PostgresState {
@@ -422,6 +438,23 @@ impl MethodContentRepository for PostgresMethodContentRepository {
             MethodContent::rehydrate(content)
         })
         .transpose()
+    }
+
+    async fn list_all(&self) -> Result<Vec<MethodContent>, MethodLibraryError> {
+        let rows = sqlx::query(&format!(
+            "select content_json from {METHOD_CONTENTS_TABLE} order by content_id"
+        ))
+        .fetch_all(&self.state.pool)
+        .await
+        .map_err(map_sqlx_error)?;
+
+        rows.into_iter()
+            .map(|row| -> Result<MethodContent, MethodLibraryError> {
+                let Json(content): Json<MethodContent> =
+                    row.try_get("content_json").map_err(map_sqlx_error)?;
+                MethodContent::rehydrate(content)
+            })
+            .collect()
     }
 
     async fn find_published_by_kind(
@@ -728,6 +761,29 @@ impl MethodContentVersionRepository for PostgresMethodContentVersionRepository {
         )
         .transpose()
     }
+
+    async fn list_by_content(
+        &self,
+        content_id: ContentId,
+    ) -> Result<Vec<MethodContentVersionRecord>, MethodLibraryError> {
+        let rows = sqlx::query(&format!(
+            "select version_json from {METHOD_CONTENT_VERSIONS_TABLE} where content_id = $1 order by published_at"
+        ))
+        .bind(&content_id)
+        .fetch_all(&self.state.pool)
+        .await
+        .map_err(map_sqlx_error)?;
+
+        rows.into_iter()
+            .map(
+                |row| -> Result<MethodContentVersionRecord, MethodLibraryError> {
+                    let Json(record): Json<MethodContentVersionRecord> =
+                        row.try_get("version_json").map_err(map_sqlx_error)?;
+                    Ok(record)
+                },
+            )
+            .collect()
+    }
 }
 
 #[async_trait]
@@ -763,6 +819,32 @@ impl SupersedeLinkRepository for PostgresSupersedeLinkRepository {
             Err(error) => Err(map_sqlx_error(error)),
         }
     }
+
+    async fn list_by_content(
+        &self,
+        content_id: ContentId,
+    ) -> Result<Vec<SupersedeLink>, MethodLibraryError> {
+        let rows = sqlx::query(&format!(
+            "select supersede_link_id, old_content_id, new_content_id, content_family_id, reason, created_at from {SUPERSEDE_LINKS_TABLE} where old_content_id = $1 or new_content_id = $1 order by created_at"
+        ))
+        .bind(&content_id)
+        .fetch_all(&self.state.pool)
+        .await
+        .map_err(map_sqlx_error)?;
+
+        rows.into_iter()
+            .map(|row| -> Result<SupersedeLink, MethodLibraryError> {
+                Ok(SupersedeLink {
+                    supersede_link_id: row.try_get("supersede_link_id").map_err(map_sqlx_error)?,
+                    old_content_id: row.try_get("old_content_id").map_err(map_sqlx_error)?,
+                    new_content_id: row.try_get("new_content_id").map_err(map_sqlx_error)?,
+                    content_family_id: row.try_get("content_family_id").map_err(map_sqlx_error)?,
+                    reason: row.try_get("reason").map_err(map_sqlx_error)?,
+                    created_at: row.try_get("created_at").map_err(map_sqlx_error)?,
+                })
+            })
+            .collect()
+    }
 }
 
 #[async_trait]
@@ -790,6 +872,27 @@ impl LifecycleHistoryRepository for PostgresLifecycleHistoryRepository {
         .await
         .map(|_| ())
         .map_err(map_sqlx_error)
+    }
+
+    async fn list_by_content(
+        &self,
+        content_id: ContentId,
+    ) -> Result<Vec<LifecycleHistoryEntry>, MethodLibraryError> {
+        let rows = sqlx::query(&format!(
+            "select entry_json from {LIFECYCLE_HISTORY_TABLE} where content_id = $1 order by created_at"
+        ))
+        .bind(&content_id)
+        .fetch_all(&self.state.pool)
+        .await
+        .map_err(map_sqlx_error)?;
+
+        rows.into_iter()
+            .map(|row| -> Result<LifecycleHistoryEntry, MethodLibraryError> {
+                let Json(entry): Json<LifecycleHistoryEntry> =
+                    row.try_get("entry_json").map_err(map_sqlx_error)?;
+                Ok(entry)
+            })
+            .collect()
     }
 }
 
@@ -820,6 +923,27 @@ impl AuditRepository for PostgresAuditRepository {
         .await
         .map(|_| ())
         .map_err(map_sqlx_error)
+    }
+
+    async fn list_by_content(
+        &self,
+        content_id: ContentId,
+    ) -> Result<Vec<AuditRecord>, MethodLibraryError> {
+        let rows = sqlx::query(&format!(
+            "select record_json from {AUDIT_RECORDS_TABLE} where (target_ref_json ->> 'target_id') = $1 order by occurred_at"
+        ))
+        .bind(&content_id)
+        .fetch_all(&self.state.pool)
+        .await
+        .map_err(map_sqlx_error)?;
+
+        rows.into_iter()
+            .map(|row| -> Result<AuditRecord, MethodLibraryError> {
+                let Json(record): Json<AuditRecord> =
+                    row.try_get("record_json").map_err(map_sqlx_error)?;
+                Ok(record)
+            })
+            .collect()
     }
 }
 
@@ -1113,6 +1237,110 @@ impl OutboxRepository for PostgresOutboxRepository {
         }
 
         Ok(())
+    }
+
+    async fn list_replayable(
+        &self,
+        from_cursor: Option<OutboxEventId>,
+        event_types: Vec<DefinitionEventType>,
+        limit: u32,
+    ) -> Result<Vec<OutboxEvent>, MethodLibraryError> {
+        let mut sql = format!(
+            "select outbox_event_id, aggregate_id, payload_json, payload_hash, status, retry_count, next_retry_at, worker_id, lease_until, published_at, idempotency_key from {OUTBOX_TABLE} where 1 = 1"
+        );
+        let mut conditions = Vec::new();
+        let mut bind_index = 1;
+        if from_cursor.is_some() {
+            conditions.push(format!("outbox_event_id > ${bind_index}"));
+            bind_index += 1;
+        }
+        if !event_types.is_empty() {
+            conditions.push(format!("event_type = any(${bind_index})"));
+        }
+        if !conditions.is_empty() {
+            sql.push_str(" and ");
+            sql.push_str(&conditions.join(" and "));
+        }
+        sql.push_str(" order by outbox_event_id limit ");
+        sql.push_str(&(limit as i64).to_string());
+
+        let mut query = sqlx::query(&sql);
+        if let Some(cursor) = &from_cursor {
+            query = query.bind(cursor);
+        }
+        if !event_types.is_empty() {
+            let labels = event_types
+                .iter()
+                .map(|event_type| event_type.as_str())
+                .collect::<Vec<_>>();
+            query = query.bind(labels);
+        }
+
+        let rows = query
+            .fetch_all(&self.state.pool)
+            .await
+            .map_err(map_sqlx_error)?;
+
+        rows.into_iter()
+            .map(|row| -> Result<OutboxEvent, MethodLibraryError> {
+                let Json(envelope): Json<DefinitionEventEnvelope> =
+                    row.try_get("payload_json").map_err(map_sqlx_error)?;
+                Ok(OutboxEvent {
+                    event_id: row.try_get("outbox_event_id").map_err(map_sqlx_error)?,
+                    aggregate_id: row.try_get("aggregate_id").map_err(map_sqlx_error)?,
+                    envelope,
+                    payload_hash: row.try_get("payload_hash").map_err(map_sqlx_error)?,
+                    status: decode_outbox_status(
+                        row.try_get::<String, _>("status").map_err(map_sqlx_error)?,
+                    ),
+                    retry_count: row
+                        .try_get::<i32, _>("retry_count")
+                        .map_err(map_sqlx_error)? as u32,
+                    next_retry_at: row.try_get("next_retry_at").map_err(map_sqlx_error)?,
+                    worker_id: row.try_get("worker_id").map_err(map_sqlx_error)?,
+                    lease_until: row.try_get("lease_until").map_err(map_sqlx_error)?,
+                    published_at: row.try_get("published_at").map_err(map_sqlx_error)?,
+                    idempotency_key: row.try_get("idempotency_key").map_err(map_sqlx_error)?,
+                })
+            })
+            .collect()
+    }
+
+    async fn list_by_aggregate(
+        &self,
+        aggregate_id: ContentId,
+    ) -> Result<Vec<OutboxEvent>, MethodLibraryError> {
+        let rows = sqlx::query(&format!(
+            "select outbox_event_id, aggregate_id, payload_json, payload_hash, status, retry_count, next_retry_at, worker_id, lease_until, published_at, idempotency_key from {OUTBOX_TABLE} where aggregate_id = $1 order by outbox_event_id"
+        ))
+        .bind(&aggregate_id)
+        .fetch_all(&self.state.pool)
+        .await
+        .map_err(map_sqlx_error)?;
+
+        rows.into_iter()
+            .map(|row| -> Result<OutboxEvent, MethodLibraryError> {
+                let Json(envelope): Json<DefinitionEventEnvelope> =
+                    row.try_get("payload_json").map_err(map_sqlx_error)?;
+                Ok(OutboxEvent {
+                    event_id: row.try_get("outbox_event_id").map_err(map_sqlx_error)?,
+                    aggregate_id: row.try_get("aggregate_id").map_err(map_sqlx_error)?,
+                    envelope,
+                    payload_hash: row.try_get("payload_hash").map_err(map_sqlx_error)?,
+                    status: decode_outbox_status(
+                        row.try_get::<String, _>("status").map_err(map_sqlx_error)?,
+                    ),
+                    retry_count: row
+                        .try_get::<i32, _>("retry_count")
+                        .map_err(map_sqlx_error)? as u32,
+                    next_retry_at: row.try_get("next_retry_at").map_err(map_sqlx_error)?,
+                    worker_id: row.try_get("worker_id").map_err(map_sqlx_error)?,
+                    lease_until: row.try_get("lease_until").map_err(map_sqlx_error)?,
+                    published_at: row.try_get("published_at").map_err(map_sqlx_error)?,
+                    idempotency_key: row.try_get("idempotency_key").map_err(map_sqlx_error)?,
+                })
+            })
+            .collect()
     }
 }
 
@@ -1408,6 +1636,187 @@ impl InboundDeadLetterRepository for PostgresInboundDeadLetterRepository {
     }
 }
 
+#[async_trait]
+impl JobRunRepository for PostgresJobRunRepository {
+    async fn start_once(
+        &self,
+        tx: &mut UnitOfWorkTx,
+        job_name: JobName,
+        scope_hash: String,
+        key: IdempotencyKey,
+        now: Timestamp,
+    ) -> Result<JobRunStartResult, MethodLibraryError> {
+        let connection = self.state.transaction_connection(tx.request_id()).await?;
+        let mut connection = connection.lock().await;
+        let connection = &mut **connection;
+        let job_run_id = format!("{job_name}:{scope_hash}:{key}");
+
+        let inserted = sqlx::query(&format!(
+            "insert into {JOB_RUNS_TABLE} (job_run_id, job_name, scope_hash, idempotency_key, status, result_json, started_at, finished_at) values ($1,$2,$3,$4,'running',$5,$6,$7) on conflict do nothing"
+        ))
+        .bind(&job_run_id)
+        .bind(&job_name)
+        .bind(&scope_hash)
+        .bind(&key)
+        .bind::<Option<JsonValue>>(None)
+        .bind(now)
+        .bind::<Option<Timestamp>>(None)
+        .execute(&mut *connection)
+        .await
+        .map_err(map_sqlx_error)?;
+
+        if inserted.rows_affected() > 0 {
+            return Ok(JobRunStartResult::Started(job_run_id));
+        }
+
+        let row = sqlx::query(&format!(
+            "select job_run_id, job_name, scope_hash, idempotency_key, status, result_json, started_at, finished_at from {JOB_RUNS_TABLE} where job_name = $1 and scope_hash = $2 and idempotency_key = $3"
+        ))
+        .bind(&job_name)
+        .bind(&scope_hash)
+        .bind(&key)
+        .fetch_one(&mut *connection)
+        .await
+        .map_err(map_sqlx_error)?;
+        let record = decode_job_run_row(&row)?;
+
+        if record.status == JobRunStatus::Running {
+            Ok(JobRunStartResult::AlreadyRunning(record.job_run_id))
+        } else {
+            Ok(JobRunStartResult::Existing(record))
+        }
+    }
+
+    async fn complete(
+        &self,
+        tx: &mut UnitOfWorkTx,
+        job_run_id: JobRunId,
+        result: JobResult,
+        now: Timestamp,
+    ) -> Result<(), MethodLibraryError> {
+        update_job_run_status(
+            &self.state,
+            tx,
+            job_run_id,
+            JobRunStatus::Succeeded,
+            result,
+            now,
+        )
+        .await
+    }
+
+    async fn complete_with_partial_failure(
+        &self,
+        tx: &mut UnitOfWorkTx,
+        job_run_id: JobRunId,
+        result: JobResult,
+        now: Timestamp,
+    ) -> Result<(), MethodLibraryError> {
+        update_job_run_status(
+            &self.state,
+            tx,
+            job_run_id,
+            JobRunStatus::PartiallySucceeded,
+            result,
+            now,
+        )
+        .await
+    }
+
+    async fn fail(
+        &self,
+        tx: &mut UnitOfWorkTx,
+        job_run_id: JobRunId,
+        reason: FailureReason,
+        now: Timestamp,
+    ) -> Result<(), MethodLibraryError> {
+        update_job_run_status(
+            &self.state,
+            tx,
+            job_run_id,
+            JobRunStatus::Failed,
+            serde_json::to_value(reason).map_err(|error| {
+                MethodLibraryError::retryable(
+                    MethodLibraryErrorCode::PersistenceUnavailable,
+                    format!("failed to serialize job failure reason: {error}"),
+                )
+            })?,
+            now,
+        )
+        .await
+    }
+}
+
+fn decode_outbox_status(value: String) -> OutboxStatus {
+    match value.as_str() {
+        "pending" => OutboxStatus::Pending,
+        "publishing" => OutboxStatus::Publishing,
+        "published" => OutboxStatus::Published,
+        "retryable_failed" => OutboxStatus::RetryableFailed,
+        _ => OutboxStatus::DeadLettered,
+    }
+}
+
+fn decode_job_run_row(row: &sqlx::postgres::PgRow) -> Result<JobRunRecord, MethodLibraryError> {
+    Ok(JobRunRecord {
+        job_run_id: row.try_get("job_run_id").map_err(map_sqlx_error)?,
+        job_name: row.try_get("job_name").map_err(map_sqlx_error)?,
+        scope_hash: row.try_get("scope_hash").map_err(map_sqlx_error)?,
+        idempotency_key: row.try_get("idempotency_key").map_err(map_sqlx_error)?,
+        status: match row
+            .try_get::<String, _>("status")
+            .map_err(map_sqlx_error)?
+            .as_str()
+        {
+            "running" => JobRunStatus::Running,
+            "succeeded" => JobRunStatus::Succeeded,
+            "partially_succeeded" => JobRunStatus::PartiallySucceeded,
+            _ => JobRunStatus::Failed,
+        },
+        result: row.try_get("result_json").map_err(map_sqlx_error)?,
+        started_at: row.try_get("started_at").map_err(map_sqlx_error)?,
+        finished_at: row.try_get("finished_at").map_err(map_sqlx_error)?,
+    })
+}
+
+async fn update_job_run_status(
+    state: &Arc<PostgresState>,
+    tx: &mut UnitOfWorkTx,
+    job_run_id: JobRunId,
+    status: JobRunStatus,
+    result: JobResult,
+    now: Timestamp,
+) -> Result<(), MethodLibraryError> {
+    let connection = state.transaction_connection(tx.request_id()).await?;
+    let mut connection = connection.lock().await;
+    let connection = &mut **connection;
+    let status_label = match status {
+        JobRunStatus::Running => "running",
+        JobRunStatus::Succeeded => "succeeded",
+        JobRunStatus::PartiallySucceeded => "partially_succeeded",
+        JobRunStatus::Failed => "failed",
+    };
+    let updated = sqlx::query(&format!(
+        "update {JOB_RUNS_TABLE} set status = $2, result_json = $3, finished_at = $4 where job_run_id = $1 and status = 'running'"
+    ))
+    .bind(&job_run_id)
+    .bind(status_label)
+    .bind(Json(&result))
+    .bind(now)
+    .execute(&mut *connection)
+    .await
+    .map_err(map_sqlx_error)?;
+
+    if updated.rows_affected() == 0 {
+        return Err(MethodLibraryError::validation(
+            MethodLibraryErrorCode::JobStatusConflict,
+            "job run is not running",
+        ));
+    }
+
+    Ok(())
+}
+
 fn map_db_connect_error(error: sqlx::Error) -> MethodLibraryError {
     MethodLibraryError::retryable(
         MethodLibraryErrorCode::PersistenceUnavailable,
@@ -1552,6 +1961,7 @@ mod tests {
         DeterministicClock, DeterministicFingerprintHasher, DeterministicIdGenerator,
         InMemoryObjectStorage, StaticGovernancePort,
     };
+    use method_library_application::ports::{JobRunRepository, OutboxRepository};
     use method_library_application::{MethodContentCommandService, UnitOfWork};
     use method_library_contracts::{
         ActorContext, ContentSummaryView, EventTraceContext, ListMethodContentsQuery,
@@ -1584,7 +1994,7 @@ mod tests {
             PostgresPersistence::connect_and_migrate(&PostgresTestDatabase::database_url())
                 .await
                 .expect("test database should connect");
-        sqlx::query(&format!("truncate table {METHOD_CONTENTS_TABLE}, {METHOD_CONTENT_REFERENCES_TABLE}, {METHOD_CONTENT_VERSIONS_TABLE}, {SUPERSEDE_LINKS_TABLE}, {LIFECYCLE_HISTORY_TABLE}, {AUDIT_RECORDS_TABLE}, {OUTBOX_TABLE}, {IDEMPOTENCY_TABLE}, {SNAPSHOT_TABLE}, {SUMMARY_TABLE}, {TRACE_TABLE}, {CHECKPOINT_TABLE}, {DEAD_LETTER_TABLE} restart identity cascade"))
+        sqlx::query(&format!("truncate table {METHOD_CONTENTS_TABLE}, {METHOD_CONTENT_REFERENCES_TABLE}, {METHOD_CONTENT_VERSIONS_TABLE}, {SUPERSEDE_LINKS_TABLE}, {LIFECYCLE_HISTORY_TABLE}, {AUDIT_RECORDS_TABLE}, {OUTBOX_TABLE}, {IDEMPOTENCY_TABLE}, {SNAPSHOT_TABLE}, {SUMMARY_TABLE}, {TRACE_TABLE}, {CHECKPOINT_TABLE}, {DEAD_LETTER_TABLE}, {JOB_RUNS_TABLE} restart identity cascade"))
             .execute(&persistence.state.pool)
             .await
             .expect("tables should truncate");
@@ -1841,7 +2251,7 @@ mod tests {
             aggregate_id.to_string(),
             DefinitionEventEnvelope {
                 event_id: event_id.to_string(),
-                event_type: method_library_contracts::DefinitionEventType::ContentPublished,
+                event_type: DefinitionEventType::ContentPublished,
                 schema_version: "1.0".to_string(),
                 occurred_at: datetime!(2026-05-26 08:10:00 UTC),
                 producer: "L3-method-library".to_string(),
@@ -2128,6 +2538,129 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn job_run_repository_keys_results_by_scope_and_idempotency_key() {
+        let _guard = test_guard();
+        let persistence = test_db().await;
+        let repository = persistence.job_run_repository();
+        let mut tx = persistence
+            .unit_of_work()
+            .begin(sample_meta())
+            .await
+            .expect("transaction should begin");
+
+        let started = repository
+            .start_once(
+                &mut tx,
+                "rebuild_read_models".to_string(),
+                "scope-1".to_string(),
+                "idem-1".to_string(),
+                datetime!(2026-05-26 08:00:00 UTC),
+            )
+            .await
+            .expect("job run should start");
+        let job_run_id = match started {
+            JobRunStartResult::Started(job_run_id) => job_run_id,
+            other => panic!("expected a new job run, got {other:?}"),
+        };
+        repository
+            .complete(
+                &mut tx,
+                job_run_id.clone(),
+                serde_json::json!({ "job_run_id": job_run_id.clone() }),
+                datetime!(2026-05-26 08:01:00 UTC),
+            )
+            .await
+            .expect("job run should complete");
+        tx.commit().await.expect("commit should succeed");
+
+        let mut existing_tx = persistence
+            .unit_of_work()
+            .begin(sample_meta())
+            .await
+            .expect("transaction should begin");
+        let existing = repository
+            .start_once(
+                &mut existing_tx,
+                "rebuild_read_models".to_string(),
+                "scope-1".to_string(),
+                "idem-1".to_string(),
+                datetime!(2026-05-26 08:02:00 UTC),
+            )
+            .await
+            .expect("existing job run should be returned");
+        match existing {
+            JobRunStartResult::Existing(record) => {
+                assert_eq!(record.job_run_id, job_run_id);
+                assert_eq!(record.status, JobRunStatus::Succeeded);
+            }
+            other => panic!("expected an existing job run, got {other:?}"),
+        }
+        existing_tx
+            .rollback()
+            .await
+            .expect("rollback should succeed");
+
+        let mut second_key_tx = persistence
+            .unit_of_work()
+            .begin(sample_meta_with("idem-2", "hash-2"))
+            .await
+            .expect("transaction should begin");
+        let second_key = repository
+            .start_once(
+                &mut second_key_tx,
+                "rebuild_read_models".to_string(),
+                "scope-1".to_string(),
+                "idem-2".to_string(),
+                datetime!(2026-05-26 08:03:00 UTC),
+            )
+            .await
+            .expect("a different idempotency key should start a new job run");
+        assert!(matches!(second_key, JobRunStartResult::Started(_)));
+        second_key_tx
+            .rollback()
+            .await
+            .expect("rollback should succeed");
+    }
+
+    #[tokio::test]
+    async fn outbox_repository_lists_replayable_events_by_cursor_and_type() {
+        let _guard = test_guard();
+        let persistence = test_db().await;
+        let outbox = persistence.outbox_repository();
+        let mut tx = persistence
+            .unit_of_work()
+            .begin(sample_meta())
+            .await
+            .expect("transaction should begin");
+        let event_one = sample_outbox_event("evt-1", "content-1", Some("idem-1"));
+        let mut event_two = sample_outbox_event("evt-2", "content-2", Some("idem-2"));
+        event_two.envelope.event_type = DefinitionEventType::ContentRetired;
+        outbox
+            .append(&mut tx, event_one)
+            .await
+            .expect("first outbox event should append");
+        outbox
+            .append(&mut tx, event_two)
+            .await
+            .expect("second outbox event should append");
+        tx.commit().await.expect("commit should succeed");
+
+        let published = outbox
+            .list_replayable(None, vec![DefinitionEventType::ContentPublished], 10)
+            .await
+            .expect("published replay query should succeed");
+        assert_eq!(published.len(), 1);
+        assert_eq!(published[0].event_id, "evt-1");
+
+        let after_cursor = outbox
+            .list_replayable(Some("evt-1".to_string()), Vec::new(), 10)
+            .await
+            .expect("cursor replay query should succeed");
+        assert_eq!(after_cursor.len(), 1);
+        assert_eq!(after_cursor[0].event_id, "evt-2");
+    }
+
+    #[tokio::test]
     async fn outbox_repository_claims_and_marks_status() {
         let _guard = test_guard();
         let persistence = test_db().await;
@@ -2142,7 +2675,7 @@ mod tests {
             "content-1".to_string(),
             DefinitionEventEnvelope {
                 event_id: "evt-1".to_string(),
-                event_type: method_library_contracts::DefinitionEventType::ContentPublished,
+                event_type: DefinitionEventType::ContentPublished,
                 schema_version: "1.0".to_string(),
                 occurred_at: datetime!(2026-05-26 08:10:00 UTC),
                 producer: "L3-method-library".to_string(),

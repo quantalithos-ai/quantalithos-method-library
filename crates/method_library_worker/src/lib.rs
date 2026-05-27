@@ -1,7 +1,9 @@
 //! Worker bootstrap surface for outbox relay and operations jobs.
 
+pub mod operations_job;
 pub mod outbox_relay;
 
+pub use operations_job::OperationsJobRunner;
 pub use outbox_relay::{OutboxRelaySettings, OutboxRelayWorker};
 
 /// Returns the placeholder worker name.

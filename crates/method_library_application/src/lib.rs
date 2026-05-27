@@ -2,11 +2,13 @@
 
 use method_library_contracts::PlaceholderContract;
 
+pub mod operations_services;
 pub mod ports;
 pub mod query_services;
 pub mod services;
 pub mod sync_services;
 
+pub use operations_services::MethodOperationsService;
 pub use ports::*;
 pub use query_services::MethodContentQueryService;
 pub use services::MethodContentCommandService;

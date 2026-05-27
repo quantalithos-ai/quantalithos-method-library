@@ -628,6 +628,9 @@ pub trait MethodContentRepository: Send + Sync {
     async fn get(&self, content_id: ContentId)
     -> Result<Option<MethodContent>, MethodLibraryError>;
 
+    /// Lists all aggregates in stable identifier order.
+    async fn list_all(&self) -> Result<Vec<MethodContent>, MethodLibraryError>;
+
     /// Lists published aggregates of one kind for read-only resolution flows.
     async fn find_published_by_kind(
         &self,
@@ -699,6 +702,12 @@ pub trait MethodContentVersionRepository: Send + Sync {
         content_id: ContentId,
         version: ContentVersion,
     ) -> Result<Option<MethodContentVersionRecord>, MethodLibraryError>;
+
+    /// Lists all version-history records for one content aggregate.
+    async fn list_by_content(
+        &self,
+        content_id: ContentId,
+    ) -> Result<Vec<MethodContentVersionRecord>, MethodLibraryError>;
 }
 
 /// Repository for supersede links.
@@ -710,6 +719,12 @@ pub trait SupersedeLinkRepository: Send + Sync {
         tx: &mut UnitOfWorkTx,
         link: SupersedeLink,
     ) -> Result<(), MethodLibraryError>;
+
+    /// Lists supersede links that mention one content aggregate.
+    async fn list_by_content(
+        &self,
+        content_id: ContentId,
+    ) -> Result<Vec<SupersedeLink>, MethodLibraryError>;
 }
 
 /// Repository for lifecycle history.
@@ -721,6 +736,12 @@ pub trait LifecycleHistoryRepository: Send + Sync {
         tx: &mut UnitOfWorkTx,
         entry: LifecycleHistoryEntry,
     ) -> Result<(), MethodLibraryError>;
+
+    /// Lists lifecycle-history entries for one content aggregate.
+    async fn list_by_content(
+        &self,
+        content_id: ContentId,
+    ) -> Result<Vec<LifecycleHistoryEntry>, MethodLibraryError>;
 }
 
 /// Repository for audit records.
@@ -732,6 +753,12 @@ pub trait AuditRepository: Send + Sync {
         tx: &mut UnitOfWorkTx,
         record: AuditRecord,
     ) -> Result<(), MethodLibraryError>;
+
+    /// Lists audit records for one content aggregate.
+    async fn list_by_content(
+        &self,
+        content_id: ContentId,
+    ) -> Result<Vec<AuditRecord>, MethodLibraryError>;
 }
 
 /// Repository for request idempotency.
@@ -812,6 +839,20 @@ pub trait OutboxRepository: Send + Sync {
         reason: FailureReason,
         now: Timestamp,
     ) -> Result<(), MethodLibraryError>;
+
+    /// Lists historical outbox events after an optional cursor for replay or rebuild.
+    async fn list_replayable(
+        &self,
+        from_cursor: Option<OutboxEventId>,
+        event_types: Vec<method_library_contracts::DefinitionEventType>,
+        limit: BatchSize,
+    ) -> Result<Vec<OutboxEvent>, MethodLibraryError>;
+
+    /// Lists all outbox events emitted for one aggregate.
+    async fn list_by_aggregate(
+        &self,
+        aggregate_id: ContentId,
+    ) -> Result<Vec<OutboxEvent>, MethodLibraryError>;
 }
 
 /// Repository for snapshot metadata.
