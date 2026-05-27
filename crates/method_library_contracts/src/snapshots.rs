@@ -6,7 +6,7 @@ use method_library_domain::content::{
     CanonicalFingerprint, ContentId, ContentVersion, PublishedContentRef, SnapshotId, Timestamp,
 };
 
-use crate::queries::MethodContentView;
+use crate::queries::{ApiSchemaVersion, MethodContentView};
 
 /// Stable snapshot schema version label.
 pub type SnapshotSchemaVersion = String;
@@ -65,6 +65,8 @@ pub struct DefinitionSnapshot {
 /// Response DTO for exporting a definition snapshot.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExportDefinitionSnapshotResponse {
+    /// Response schema version.
+    pub schema_version: ApiSchemaVersion,
     /// Logical snapshot reference.
     pub snapshot_ref: SnapshotRef,
     /// Frozen published content reference.
@@ -73,6 +75,9 @@ pub struct ExportDefinitionSnapshotResponse {
     pub payload: SnapshotPayload,
     /// Frozen published references.
     pub references: Vec<PublishedContentRef>,
+    /// Snapshot generation timestamp copied from the payload.
+    #[serde(with = "time::serde::rfc3339")]
+    pub generated_at: Timestamp,
 }
 
 impl DefinitionSnapshot {

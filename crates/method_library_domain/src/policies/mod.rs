@@ -192,11 +192,13 @@ impl FingerprintPolicy {
 pub struct ViewProfileMatchPolicy;
 
 impl ViewProfileMatchPolicy {
-    /// Resolves the first candidate matching the role, object kind, and scope rules.
+    /// Resolves exactly one candidate matching the role, object kind, and scope rules.
     pub fn match_profile(
         request: &ViewProfileResolveRequest,
         profiles: &[ViewProfileCandidate],
     ) -> Result<ViewProfileResolveResult, MethodLibraryError> {
+        let mut matched_profile = None;
+
         for candidate in profiles {
             if candidate.profile.role_ref.content_id != request.role_ref.content_id
                 || candidate.profile.object_kind != request.object_kind
@@ -211,19 +213,29 @@ impl ViewProfileMatchPolicy {
                     .iter()
                     .any(|scope_rule| scope_rule_matches(scope_rule, &request.scope))
             {
-                return Ok(ViewProfileResolveResult {
+                let resolved = ViewProfileResolveResult {
                     view_profile_ref: candidate.content_ref.clone(),
                     scope_rules: candidate.profile.scope_rules.clone(),
                     field_rules: candidate.profile.field_rules.clone(),
                     action_rules: candidate.profile.action_rules.clone(),
-                });
+                };
+                if matched_profile.replace(resolved).is_some() {
+                    return Err(MethodLibraryError::validation(
+                        MethodLibraryErrorCode::ViewProfileAmbiguous,
+                        "multiple published view profiles matched the request",
+                    )
+                    .with_detail("role_content_id", request.role_ref.content_id.clone())
+                    .with_detail("object_kind", request.object_kind.as_str()));
+                }
             }
         }
 
-        Err(MethodLibraryError::validation(
-            MethodLibraryErrorCode::MethodContentNotFound,
-            "no published view profile matched the request",
-        ))
+        matched_profile.ok_or_else(|| {
+            MethodLibraryError::validation(
+                MethodLibraryErrorCode::MethodContentNotFound,
+                "no published view profile matched the request",
+            )
+        })
     }
 }
 
@@ -396,5 +408,45 @@ mod tests {
             .expect("profile should match");
 
         assert_eq!(result.view_profile_ref.content_id, "vp-1");
+    }
+
+    #[test]
+    fn rejects_ambiguous_view_profile_matches() {
+        let request = ViewProfileResolveRequest {
+            role_ref: published_ref(MethodContentKind::RoleDefinition, "role-1"),
+            object_kind: ViewObjectKind::WorkItem,
+            scope: json!({
+                "project": {
+                    "type": "software_delivery"
+                }
+            }),
+        };
+        let first_candidate = ViewProfileCandidate {
+            content_ref: published_ref(MethodContentKind::ViewProfile, "vp-1"),
+            profile: ViewProfile {
+                role_ref: request.role_ref.clone(),
+                object_kind: ViewObjectKind::WorkItem,
+                scope_rules: vec![ViewScopeRule {
+                    scope_key: "default".to_string(),
+                    conditions: vec![ViewCondition {
+                        field_path: "project.type".to_string(),
+                        operator: ViewConditionOperator::Eq,
+                        value_json: Some(json!("software_delivery")),
+                    }],
+                }],
+                field_rules: Vec::new(),
+                action_rules: Vec::new(),
+            },
+        };
+        let second_candidate = ViewProfileCandidate {
+            content_ref: published_ref(MethodContentKind::ViewProfile, "vp-2"),
+            profile: first_candidate.profile.clone(),
+        };
+
+        let error =
+            ViewProfileMatchPolicy::match_profile(&request, &[first_candidate, second_candidate])
+                .expect_err("ambiguous matches should fail");
+
+        assert_eq!(error.code, MethodLibraryErrorCode::ViewProfileAmbiguous);
     }
 }

@@ -628,6 +628,12 @@ pub trait MethodContentRepository: Send + Sync {
     async fn get(&self, content_id: ContentId)
     -> Result<Option<MethodContent>, MethodLibraryError>;
 
+    /// Lists published aggregates of one kind for read-only resolution flows.
+    async fn find_published_by_kind(
+        &self,
+        kind: method_library_domain::content::MethodContentKind,
+    ) -> Result<Vec<MethodContent>, MethodLibraryError>;
+
     /// Reads one aggregate for update.
     async fn get_for_update(
         &self,

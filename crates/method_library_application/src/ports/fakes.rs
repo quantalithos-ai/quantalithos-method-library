@@ -12,8 +12,8 @@ use method_library_contracts::{
 use method_library_domain::content::{
     ApprovedGateRef, CanonicalBytes, CanonicalFingerprint, ContentFamilyId, ContentId, ContentRef,
     ContentVersion, FingerprintAlgorithm, IdempotencyKey, JobName, JobRunId, LeaseDuration,
-    MethodContent, OutboxEventId, PublishedContentRef, RequestHash, Revision, SnapshotId,
-    Timestamp, WorkerId,
+    LifecycleState, MethodContent, MethodContentKind, OutboxEventId, PublishedContentRef,
+    RequestHash, Revision, SnapshotId, Timestamp, WorkerId,
 };
 use method_library_domain::{MethodLibraryError, MethodLibraryErrorCode};
 
@@ -229,6 +229,16 @@ impl InMemoryObjectStorage {
     pub fn blobs(&self) -> Result<HashMap<SnapshotBlobRef, SnapshotPayload>, MethodLibraryError> {
         Ok(lock(&self.blobs)?.clone())
     }
+
+    /// Inserts or replaces one snapshot blob for tests.
+    pub fn insert_blob(
+        &self,
+        blob_ref: SnapshotBlobRef,
+        payload: SnapshotPayload,
+    ) -> Result<(), MethodLibraryError> {
+        lock(&self.blobs)?.insert(blob_ref, payload);
+        Ok(())
+    }
 }
 
 impl InMemoryMethodContentRepository {
@@ -301,6 +311,13 @@ impl InMemoryDefinitionSnapshotRepository {
     /// Returns the stored snapshot metadata for inspection.
     pub fn snapshots(&self) -> Result<HashMap<SnapshotId, DefinitionSnapshot>, MethodLibraryError> {
         Ok(lock(&self.snapshots)?.clone())
+    }
+}
+
+impl InMemoryDefinitionTraceProjectionRepository {
+    /// Returns the stored trace projections for inspection.
+    pub fn views(&self) -> Result<HashMap<ContentId, DefinitionTraceView>, MethodLibraryError> {
+        Ok(lock(&self.views)?.clone())
     }
 }
 
@@ -499,6 +516,21 @@ impl MethodContentRepository for InMemoryMethodContentRepository {
         content_id: ContentId,
     ) -> Result<Option<MethodContent>, MethodLibraryError> {
         Ok(lock(&self.contents)?.get(&content_id).cloned())
+    }
+
+    async fn find_published_by_kind(
+        &self,
+        kind: MethodContentKind,
+    ) -> Result<Vec<MethodContent>, MethodLibraryError> {
+        let mut contents = lock(&self.contents)?
+            .values()
+            .filter(|content| {
+                content.kind == kind && content.lifecycle.state == LifecycleState::Published
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        contents.sort_by(|left, right| left.content_id.cmp(&right.content_id));
+        Ok(contents)
     }
 
     async fn get_for_update(
@@ -934,8 +966,7 @@ impl ContentSummaryProjectionRepository for InMemoryContentSummaryProjectionRepo
                 query.read_mode != method_library_contracts::ReadMode::Published
                     || matches!(
                         view.lifecycle_state,
-                        method_library_domain::content::LifecycleState::Published
-                            | method_library_domain::content::LifecycleState::Deprecated
+                        LifecycleState::Published | LifecycleState::Deprecated
                     )
             })
             .filter(|view| query.kind.is_none_or(|kind| view.kind == kind))

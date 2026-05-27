@@ -6,24 +6,26 @@ use axum::Router;
 use axum::extract::{Json, Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, patch};
+use axum::routing::{get, patch, post};
 use method_library_application::ports::Clock;
 use method_library_application::ports::fakes::{
     DeterministicClock, DeterministicFingerprintHasher, DeterministicIdGenerator, FakeUnitOfWork,
     InMemoryAuditRepository, InMemoryContentSummaryProjectionRepository,
-    InMemoryDefinitionSnapshotRepository, InMemoryIdempotencyRepository,
-    InMemoryLifecycleHistoryRepository, InMemoryMethodContentReferenceRepository,
-    InMemoryMethodContentRepository, InMemoryMethodContentVersionRepository, InMemoryObjectStorage,
-    InMemoryOutboxRepository, InMemoryProjectionCheckpointRepository,
-    InMemorySupersedeLinkRepository, StaticGovernancePort,
+    InMemoryDefinitionSnapshotRepository, InMemoryDefinitionTraceProjectionRepository,
+    InMemoryIdempotencyRepository, InMemoryLifecycleHistoryRepository,
+    InMemoryMethodContentReferenceRepository, InMemoryMethodContentRepository,
+    InMemoryMethodContentVersionRepository, InMemoryObjectStorage, InMemoryOutboxRepository,
+    InMemoryProjectionCheckpointRepository, InMemorySupersedeLinkRepository, StaticGovernancePort,
 };
 use method_library_application::{MethodContentCommandService, MethodContentQueryService};
 use method_library_contracts::{
     CreateMethodContentDraftCommand, CreateMethodContentDraftResponse,
     DeprecateMethodContentCommand, DeprecateMethodContentResponse, ErrorResponse,
-    GetMethodContentQuery, GetMethodContentResponse, GetMethodContentVersionQuery,
-    GetMethodContentVersionResponse, ListMethodContentsQuery, ListMethodContentsResponse,
-    PlaceholderContract, PublishMethodContentCommand, PublishMethodContentResponse, ReadMode,
+    ExportDefinitionSnapshotQuery, ExportDefinitionSnapshotResponse, GetDefinitionTraceQuery,
+    GetDefinitionTraceResponse, GetMethodContentQuery, GetMethodContentResponse,
+    GetMethodContentVersionQuery, GetMethodContentVersionResponse, ListMethodContentsQuery,
+    ListMethodContentsResponse, PlaceholderContract, PublishMethodContentCommand,
+    PublishMethodContentResponse, ReadMode, ResolveViewProfileQuery, ResolveViewProfileResponse,
     RetireMethodContentCommand, RetireMethodContentResponse, SubmitMethodContentForReviewCommand,
     SubmitMethodContentForReviewResponse, SupersedeMethodContentCommand,
     SupersedeMethodContentResponse, UpdateMethodContentDraftCommand,
@@ -73,6 +75,7 @@ impl AppState {
         let reference_repository = Arc::new(InMemoryMethodContentReferenceRepository::default());
         let version_repository = Arc::new(InMemoryMethodContentVersionRepository::default());
         let snapshot_repository = Arc::new(InMemoryDefinitionSnapshotRepository::default());
+        let trace_repository = Arc::new(InMemoryDefinitionTraceProjectionRepository::default());
         let supersede_link_repository = Arc::new(InMemorySupersedeLinkRepository::default());
         let outbox_repository = Arc::new(InMemoryOutboxRepository::default());
         let lifecycle_history_repository = Arc::new(InMemoryLifecycleHistoryRepository::default());
@@ -96,7 +99,7 @@ impl AppState {
                 true,
                 datetime!(2026-05-26 08:00:00 UTC),
             )),
-            object_storage,
+            object_storage.clone(),
             Arc::new(DeterministicFingerprintHasher::default()),
             clock.clone(),
             Arc::new(DeterministicIdGenerator::default()),
@@ -106,7 +109,9 @@ impl AppState {
             reference_repository,
             version_repository,
             snapshot_repository,
+            object_storage,
             summary_repository,
+            trace_repository,
             checkpoint_repository,
             clock.clone(),
         ));
@@ -145,10 +150,13 @@ pub fn router_with_state(state: AppState) -> Router {
                     "/contents/{content_id}/versions/{version}",
                     get(get_method_content_version),
                 )
+                .route("/contents/{content_id}/trace", get(get_definition_trace))
                 .route(
                     "/contents/{content_id}/draft",
                     patch(update_method_content_draft),
-                ),
+                )
+                .route("/snapshots:export", post(export_definition_snapshot))
+                .route("/view-profiles:resolve", post(resolve_view_profile)),
         )
         .with_state(state)
 }
@@ -177,6 +185,13 @@ struct ListMethodContentsParams {
 #[derive(Debug, Deserialize)]
 struct GetMethodContentVersionParams {
     include_snapshot_ref: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GetDefinitionTraceParams {
+    include_audit: Option<bool>,
+    include_events: Option<bool>,
+    cursor: Option<String>,
 }
 
 async fn get_method_content(
@@ -460,6 +475,274 @@ async fn get_method_content_version(
                 "/contents/{content_id}/versions/{version}",
                 mapped.0,
                 Some(&content_id),
+                &error,
+            );
+            Err(mapped)
+        }
+    }
+}
+
+async fn get_definition_trace(
+    State(state): State<AppState>,
+    gateway: GatewayContextExtractor,
+    Path(content_id): Path<String>,
+    Query(params): Query<GetDefinitionTraceParams>,
+) -> Result<(StatusCode, Json<GetDefinitionTraceResponse>), (StatusCode, Json<ErrorResponse>)> {
+    log_api_request(
+        &gateway,
+        "get_definition_trace",
+        "GET",
+        "/contents/{content_id}/trace",
+        Some(&content_id),
+    );
+    let query = GetDefinitionTraceQuery {
+        content_id: content_id.clone(),
+        include_audit: params.include_audit.unwrap_or(true),
+        include_events: params.include_events.unwrap_or(true),
+        cursor: params.cursor.filter(|cursor| !cursor.trim().is_empty()),
+    };
+    let request_hash = canonical_request_hash(&query).map_err(|error| {
+        log_api_error(
+            &gateway,
+            "get_definition_trace",
+            "GET",
+            "/contents/{content_id}/trace",
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Some(&content_id),
+            &error,
+        );
+        error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            gateway.headers.request_id.clone(),
+            gateway.headers.trace_id.clone(),
+            error,
+        )
+    })?;
+    let meta = gateway
+        .request_meta(request_hash, state.received_at())
+        .map_err(|error| {
+            log_api_error(
+                &gateway,
+                "get_definition_trace",
+                "GET",
+                "/contents/{content_id}/trace",
+                StatusCode::BAD_REQUEST,
+                Some(&content_id),
+                &error,
+            );
+            error_response(
+                StatusCode::BAD_REQUEST,
+                gateway.headers.request_id.clone(),
+                gateway.headers.trace_id.clone(),
+                error,
+            )
+        })?;
+
+    match state
+        .query_service
+        .get_definition_trace(query, gateway.actor.clone(), meta)
+        .await
+    {
+        Ok(response) => {
+            log_api_success(
+                &gateway,
+                "get_definition_trace",
+                "GET",
+                "/contents/{content_id}/trace",
+                StatusCode::OK,
+                Some(&response.content_id),
+            );
+            Ok((StatusCode::OK, Json(response)))
+        }
+        Err(error) => {
+            let mapped = map_error_response(
+                gateway.headers.request_id.clone(),
+                gateway.headers.trace_id.clone(),
+                error.clone(),
+            );
+            log_api_error(
+                &gateway,
+                "get_definition_trace",
+                "GET",
+                "/contents/{content_id}/trace",
+                mapped.0,
+                Some(&content_id),
+                &error,
+            );
+            Err(mapped)
+        }
+    }
+}
+
+async fn export_definition_snapshot(
+    State(state): State<AppState>,
+    gateway: GatewayContextExtractor,
+    Json(query): Json<ExportDefinitionSnapshotQuery>,
+) -> Result<(StatusCode, Json<ExportDefinitionSnapshotResponse>), (StatusCode, Json<ErrorResponse>)>
+{
+    let target_content_id = query.content_id.clone();
+    log_api_request(
+        &gateway,
+        "export_definition_snapshot",
+        "POST",
+        "/snapshots:export",
+        target_content_id.as_deref(),
+    );
+    let request_hash = canonical_request_hash(&query).map_err(|error| {
+        log_api_error(
+            &gateway,
+            "export_definition_snapshot",
+            "POST",
+            "/snapshots:export",
+            StatusCode::INTERNAL_SERVER_ERROR,
+            target_content_id.as_deref(),
+            &error,
+        );
+        error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            gateway.headers.request_id.clone(),
+            gateway.headers.trace_id.clone(),
+            error,
+        )
+    })?;
+    let meta = gateway
+        .request_meta(request_hash, state.received_at())
+        .map_err(|error| {
+            log_api_error(
+                &gateway,
+                "export_definition_snapshot",
+                "POST",
+                "/snapshots:export",
+                StatusCode::BAD_REQUEST,
+                target_content_id.as_deref(),
+                &error,
+            );
+            error_response(
+                StatusCode::BAD_REQUEST,
+                gateway.headers.request_id.clone(),
+                gateway.headers.trace_id.clone(),
+                error,
+            )
+        })?;
+
+    match state
+        .query_service
+        .export_definition_snapshot(query, gateway.actor.clone(), meta)
+        .await
+    {
+        Ok(response) => {
+            log_api_success(
+                &gateway,
+                "export_definition_snapshot",
+                "POST",
+                "/snapshots:export",
+                StatusCode::OK,
+                Some(&response.content_ref.content_id),
+            );
+            Ok((StatusCode::OK, Json(response)))
+        }
+        Err(error) => {
+            let mapped = map_error_response(
+                gateway.headers.request_id.clone(),
+                gateway.headers.trace_id.clone(),
+                error.clone(),
+            );
+            log_api_error(
+                &gateway,
+                "export_definition_snapshot",
+                "POST",
+                "/snapshots:export",
+                mapped.0,
+                target_content_id.as_deref(),
+                &error,
+            );
+            Err(mapped)
+        }
+    }
+}
+
+async fn resolve_view_profile(
+    State(state): State<AppState>,
+    gateway: GatewayContextExtractor,
+    Json(query): Json<ResolveViewProfileQuery>,
+) -> Result<(StatusCode, Json<ResolveViewProfileResponse>), (StatusCode, Json<ErrorResponse>)> {
+    let target_content_id = query.role_ref.content_id.clone();
+    log_api_request(
+        &gateway,
+        "resolve_view_profile",
+        "POST",
+        "/view-profiles:resolve",
+        Some(&target_content_id),
+    );
+    let request_hash = canonical_request_hash(&query).map_err(|error| {
+        log_api_error(
+            &gateway,
+            "resolve_view_profile",
+            "POST",
+            "/view-profiles:resolve",
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Some(&target_content_id),
+            &error,
+        );
+        error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            gateway.headers.request_id.clone(),
+            gateway.headers.trace_id.clone(),
+            error,
+        )
+    })?;
+    let meta = gateway
+        .request_meta(request_hash, state.received_at())
+        .map_err(|error| {
+            log_api_error(
+                &gateway,
+                "resolve_view_profile",
+                "POST",
+                "/view-profiles:resolve",
+                StatusCode::BAD_REQUEST,
+                Some(&target_content_id),
+                &error,
+            );
+            error_response(
+                StatusCode::BAD_REQUEST,
+                gateway.headers.request_id.clone(),
+                gateway.headers.trace_id.clone(),
+                error,
+            )
+        })?;
+
+    match state
+        .query_service
+        .resolve_view_profile(query, gateway.actor.clone(), meta)
+        .await
+    {
+        Ok(response) => {
+            log_api_success(
+                &gateway,
+                "resolve_view_profile",
+                "POST",
+                "/view-profiles:resolve",
+                StatusCode::OK,
+                response
+                    .view_profile
+                    .as_ref()
+                    .map(|profile| profile.view_profile_ref.content_id.as_str()),
+            );
+            Ok((StatusCode::OK, Json(response)))
+        }
+        Err(error) => {
+            let mapped = map_error_response(
+                gateway.headers.request_id.clone(),
+                gateway.headers.trace_id.clone(),
+                error.clone(),
+            );
+            log_api_error(
+                &gateway,
+                "resolve_view_profile",
+                "POST",
+                "/view-profiles:resolve",
+                mapped.0,
+                Some(&target_content_id),
                 &error,
             );
             Err(mapped)
@@ -1371,10 +1654,12 @@ fn map_error_response(
         | MethodLibraryErrorCode::PublishGateInvalid => StatusCode::FAILED_DEPENDENCY,
         MethodLibraryErrorCode::IdempotencyConflict
         | MethodLibraryErrorCode::IdempotencyStatusConflict
+        | MethodLibraryErrorCode::ViewProfileAmbiguous
         | MethodLibraryErrorCode::LifecycleTransitionNotAllowed
         | MethodLibraryErrorCode::PublishedContentImmutable
         | MethodLibraryErrorCode::SupersedeConflict
-        | MethodLibraryErrorCode::ContentVersionConflict => StatusCode::CONFLICT,
+        | MethodLibraryErrorCode::ContentVersionConflict
+        | MethodLibraryErrorCode::FingerprintMismatch => StatusCode::CONFLICT,
         MethodLibraryErrorCode::MethodContentNotFound
         | MethodLibraryErrorCode::ContentVersionNotFound
         | MethodLibraryErrorCode::SnapshotNotFound => StatusCode::NOT_FOUND,
@@ -1516,21 +1801,23 @@ mod tests {
     use method_library_application::ports::fakes::{
         DeterministicClock, DeterministicFingerprintHasher, DeterministicIdGenerator,
         FakeUnitOfWork, InMemoryAuditRepository, InMemoryContentSummaryProjectionRepository,
-        InMemoryDefinitionSnapshotRepository, InMemoryIdempotencyRepository,
-        InMemoryLifecycleHistoryRepository, InMemoryMethodContentReferenceRepository,
-        InMemoryMethodContentRepository, InMemoryMethodContentVersionRepository,
-        InMemoryObjectStorage, InMemoryOutboxRepository, InMemoryProjectionCheckpointRepository,
-        InMemorySupersedeLinkRepository, StaticGovernancePort,
+        InMemoryDefinitionSnapshotRepository, InMemoryDefinitionTraceProjectionRepository,
+        InMemoryIdempotencyRepository, InMemoryLifecycleHistoryRepository,
+        InMemoryMethodContentReferenceRepository, InMemoryMethodContentRepository,
+        InMemoryMethodContentVersionRepository, InMemoryObjectStorage, InMemoryOutboxRepository,
+        InMemoryProjectionCheckpointRepository, InMemorySupersedeLinkRepository,
+        StaticGovernancePort,
     };
     use method_library_application::{
         ContentSummaryProjectionRepository, DefinitionSnapshotRepository,
-        MethodContentCommandService, MethodContentQueryService, MethodContentReferenceRepository,
-        MethodContentRepository, MethodContentVersionRepository, ProjectionCheckpointRepository,
-        UnitOfWork,
+        DefinitionTraceProjectionRepository, MethodContentCommandService,
+        MethodContentQueryService, MethodContentReferenceRepository, MethodContentRepository,
+        MethodContentVersionRepository, ProjectionCheckpointRepository, UnitOfWork,
     };
     use method_library_contracts::{
-        ErrorResponse, GetMethodContentResponse, GetMethodContentVersionResponse,
-        ListMethodContentsResponse, RequestMeta,
+        ErrorResponse, ExportDefinitionSnapshotResponse, GetDefinitionTraceResponse,
+        GetMethodContentResponse, GetMethodContentVersionResponse, ListMethodContentsResponse,
+        RequestMeta, ResolveViewProfileResponse,
     };
     use method_library_domain::MethodLibraryErrorCode;
     use method_library_domain::content::{ContentVersion, MethodContent, MethodContentKind};
@@ -1554,6 +1841,7 @@ mod tests {
         let reference_repository = Arc::new(InMemoryMethodContentReferenceRepository::default());
         let version_repository = Arc::new(InMemoryMethodContentVersionRepository::default());
         let snapshot_repository = Arc::new(InMemoryDefinitionSnapshotRepository::default());
+        let trace_repository = Arc::new(InMemoryDefinitionTraceProjectionRepository::default());
         let supersede_link_repository = Arc::new(InMemorySupersedeLinkRepository::default());
         let outbox_repository = Arc::new(InMemoryOutboxRepository::default());
         let object_storage = Arc::new(InMemoryObjectStorage::default());
@@ -1589,7 +1877,9 @@ mod tests {
             reference_repository.clone(),
             version_repository.clone(),
             snapshot_repository.clone(),
+            object_storage.clone(),
             summary_repository,
+            trace_repository,
             checkpoint_repository,
             clock.clone(),
         ));
@@ -1611,6 +1901,8 @@ mod tests {
         reference_repository: Arc<InMemoryMethodContentReferenceRepository>,
         version_repository: Arc<InMemoryMethodContentVersionRepository>,
         snapshot_repository: Arc<InMemoryDefinitionSnapshotRepository>,
+        trace_repository: Arc<InMemoryDefinitionTraceProjectionRepository>,
+        object_storage: Arc<InMemoryObjectStorage>,
         summary_repository: Arc<InMemoryContentSummaryProjectionRepository>,
         checkpoint_repository: Arc<InMemoryProjectionCheckpointRepository>,
         audit_repository: Arc<InMemoryAuditRepository>,
@@ -1625,6 +1917,7 @@ mod tests {
         let reference_repository = Arc::new(InMemoryMethodContentReferenceRepository::default());
         let version_repository = Arc::new(InMemoryMethodContentVersionRepository::default());
         let snapshot_repository = Arc::new(InMemoryDefinitionSnapshotRepository::default());
+        let trace_repository = Arc::new(InMemoryDefinitionTraceProjectionRepository::default());
         let supersede_link_repository = Arc::new(InMemorySupersedeLinkRepository::default());
         let outbox_repository = Arc::new(InMemoryOutboxRepository::default());
         let object_storage = Arc::new(InMemoryObjectStorage::default());
@@ -1650,7 +1943,7 @@ mod tests {
             audit_repository.clone(),
             idempotency_repository.clone(),
             governance_port,
-            object_storage,
+            object_storage.clone(),
             fingerprint_hasher,
             clock.clone(),
             Arc::new(DeterministicIdGenerator::default()),
@@ -1660,7 +1953,9 @@ mod tests {
             reference_repository.clone(),
             version_repository.clone(),
             snapshot_repository.clone(),
+            object_storage.clone(),
             summary_repository.clone(),
+            trace_repository.clone(),
             checkpoint_repository.clone(),
             clock.clone(),
         ));
@@ -1671,6 +1966,8 @@ mod tests {
             reference_repository,
             version_repository,
             snapshot_repository,
+            trace_repository,
+            object_storage,
             summary_repository,
             checkpoint_repository,
             audit_repository,
@@ -1881,6 +2178,235 @@ mod tests {
                 .map(|snapshot| snapshot.snapshot_id.as_str()),
             Some("snapshot-version")
         );
+    }
+
+    #[tokio::test]
+    async fn exports_definition_snapshots_via_http_without_side_effects() {
+        let harness = query_test_harness();
+        seed_snapshot_export(
+            &harness.snapshot_repository,
+            &harness.object_storage,
+            "snapshot-export",
+            "content-snapshot",
+            false,
+        )
+        .await;
+        let app = router_with_state(harness.state);
+
+        let response = app
+            .oneshot(build_gateway_request(
+                "POST",
+                api_path("/snapshots:export"),
+                None,
+                serde_json::json!({
+                    "snapshot_id": "snapshot-export",
+                    "verify_fingerprint": true
+                }),
+            ))
+            .await
+            .expect("snapshot export route should respond");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = parse_json_body::<ExportDefinitionSnapshotResponse>(response).await;
+        assert_eq!(body.snapshot_ref.snapshot_id, "snapshot-export");
+        assert_eq!(body.content_ref.content_id, "content-snapshot");
+        assert!(
+            harness
+                .audit_repository
+                .records()
+                .expect("audit records should be inspectable")
+                .is_empty()
+        );
+        assert!(
+            harness
+                .idempotency_repository
+                .records()
+                .expect("idempotency records should be inspectable")
+                .is_empty()
+        );
+        assert!(
+            harness
+                .outbox_repository
+                .events()
+                .expect("outbox records should be inspectable")
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn resolves_view_profiles_via_http_without_side_effects() {
+        let harness = query_test_harness();
+        seed_view_profile(
+            &harness.content_repository,
+            "view-profile-1",
+            "software_delivery",
+        )
+        .await;
+        let app = router_with_state(harness.state);
+
+        let response = app
+            .oneshot(build_gateway_request(
+                "POST",
+                api_path("/view-profiles:resolve"),
+                None,
+                serde_json::json!({
+                    "role_ref": {
+                        "content_id": "role-1",
+                        "kind": "role_definition",
+                        "version": "1.0.0",
+                        "fingerprint": {
+                            "algorithm": "sha256",
+                            "value": "sha256:role123",
+                            "canonical_schema_version": "1.0"
+                        }
+                    },
+                    "object_kind": "work_item",
+                    "scope": {
+                        "project": {
+                            "type": "software_delivery"
+                        }
+                    }
+                }),
+            ))
+            .await
+            .expect("view-profile resolve route should respond");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = parse_json_body::<ResolveViewProfileResponse>(response).await;
+        assert_eq!(
+            body.view_profile
+                .as_ref()
+                .map(|profile| profile.view_profile_ref.content_id.as_str()),
+            Some("view-profile-1")
+        );
+        assert!(
+            harness
+                .audit_repository
+                .records()
+                .expect("audit records should be inspectable")
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn gets_definition_traces_via_http_without_side_effects() {
+        let harness = query_test_harness();
+        seed_published_content(&harness.content_repository, "content-trace").await;
+        seed_trace_projection(
+            &harness.trace_repository,
+            &harness.checkpoint_repository,
+            "content-trace",
+        )
+        .await;
+        let app = router_with_state(harness.state);
+
+        let response = app
+            .oneshot(build_gateway_request_without_body(
+                "GET",
+                api_path("/contents/content-trace/trace?include_audit=true&include_events=true"),
+                None,
+            ))
+            .await
+            .expect("trace route should respond");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = parse_json_body::<GetDefinitionTraceResponse>(response).await;
+        assert_eq!(body.content_id, "content-trace");
+        assert_eq!(body.trace.audit_records.len(), 1);
+        assert_eq!(body.trace.outbox_events.len(), 1);
+        assert!(
+            harness
+                .outbox_repository
+                .events()
+                .expect("outbox records should be inspectable")
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_snapshot_fingerprint_mismatch_via_http() {
+        let harness = query_test_harness();
+        seed_snapshot_export(
+            &harness.snapshot_repository,
+            &harness.object_storage,
+            "snapshot-mismatch",
+            "content-snapshot",
+            true,
+        )
+        .await;
+        let app = router_with_state(harness.state);
+
+        let response = app
+            .oneshot(build_gateway_request(
+                "POST",
+                api_path("/snapshots:export"),
+                None,
+                serde_json::json!({
+                    "snapshot_id": "snapshot-mismatch",
+                    "verify_fingerprint": true
+                }),
+            ))
+            .await
+            .expect("snapshot export route should respond");
+
+        assert_error_code(
+            response,
+            StatusCode::CONFLICT,
+            MethodLibraryErrorCode::FingerprintMismatch,
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn rejects_ambiguous_view_profile_matches_via_http() {
+        let harness = query_test_harness();
+        seed_view_profile(
+            &harness.content_repository,
+            "view-profile-1",
+            "software_delivery",
+        )
+        .await;
+        seed_view_profile(
+            &harness.content_repository,
+            "view-profile-2",
+            "software_delivery",
+        )
+        .await;
+        let app = router_with_state(harness.state);
+
+        let response = app
+            .oneshot(build_gateway_request(
+                "POST",
+                api_path("/view-profiles:resolve"),
+                None,
+                serde_json::json!({
+                    "role_ref": {
+                        "content_id": "role-1",
+                        "kind": "role_definition",
+                        "version": "1.0.0",
+                        "fingerprint": {
+                            "algorithm": "sha256",
+                            "value": "sha256:role123",
+                            "canonical_schema_version": "1.0"
+                        }
+                    },
+                    "object_kind": "work_item",
+                    "scope": {
+                        "project": {
+                            "type": "software_delivery"
+                        }
+                    }
+                }),
+            ))
+            .await
+            .expect("view-profile resolve route should respond");
+
+        assert_error_code(
+            response,
+            StatusCode::CONFLICT,
+            MethodLibraryErrorCode::ViewProfileAmbiguous,
+        )
+        .await;
     }
 
     #[tokio::test]
@@ -2932,6 +3458,272 @@ mod tests {
             .await
             .expect("snapshot should insert");
         tx.commit().await.expect("transaction should commit");
+    }
+
+    async fn seed_snapshot_export(
+        snapshot_repository: &Arc<InMemoryDefinitionSnapshotRepository>,
+        object_storage: &Arc<InMemoryObjectStorage>,
+        snapshot_id: &str,
+        content_id: &str,
+        mismatch: bool,
+    ) {
+        let fingerprint = method_library_domain::content::CanonicalFingerprint::new(
+            method_library_domain::content::FingerprintAlgorithm::Sha256,
+            "abc123",
+            "1.0",
+        )
+        .expect("fingerprint should build");
+        let snapshot = method_library_contracts::DefinitionSnapshot {
+            snapshot_id: snapshot_id.to_string(),
+            content_id: content_id.to_string(),
+            version: ContentVersion::new("1.0.0").expect("version should build"),
+            fingerprint: fingerprint.clone(),
+            schema_version: "1.0".to_string(),
+            blob_ref: format!("object://{snapshot_id}"),
+            created_at: datetime!(2026-05-26 08:03:00 UTC),
+            content_ref: method_library_domain::content::PublishedContentRef {
+                content_id: content_id.to_string(),
+                kind: MethodContentKind::Qualification,
+                version: ContentVersion::new("1.0.0").expect("version should build"),
+                fingerprint: fingerprint.clone(),
+            },
+            references: vec![method_library_domain::content::PublishedContentRef {
+                content_id: "content-ref-1".to_string(),
+                kind: MethodContentKind::Qualification,
+                version: ContentVersion::new("1.0.0").expect("version should build"),
+                fingerprint: method_library_domain::content::CanonicalFingerprint::new(
+                    method_library_domain::content::FingerprintAlgorithm::Sha256,
+                    "ref123",
+                    "1.0",
+                )
+                .expect("fingerprint should build"),
+            }],
+        };
+        let mut tx = FakeUnitOfWork
+            .begin(RequestMeta {
+                request_id: format!("req-{snapshot_id}"),
+                trace_id: format!("trace-{snapshot_id}"),
+                idempotency_key: Some(format!("idem-{snapshot_id}")),
+                request_hash: format!("hash-{snapshot_id}"),
+                received_at: datetime!(2026-05-26 08:00:00 UTC),
+            })
+            .await
+            .expect("transaction should open");
+        snapshot_repository
+            .insert(&mut tx, snapshot.clone())
+            .await
+            .expect("snapshot should insert");
+        tx.commit().await.expect("transaction should commit");
+
+        object_storage
+            .insert_blob(
+                snapshot.blob_ref.clone(),
+                method_library_contracts::SnapshotPayload {
+                    content: method_library_contracts::MethodContentView {
+                        content_id: content_id.to_string(),
+                        content_family_id: format!("family-{content_id}"),
+                        kind: MethodContentKind::Qualification,
+                        name: "Snapshot Content".to_string(),
+                        description: None,
+                        lifecycle_state: method_library_domain::content::LifecycleState::Published,
+                        version: Some(ContentVersion::new("1.0.0").expect("version should build")),
+                        fingerprint: Some(if mismatch {
+                            method_library_domain::content::CanonicalFingerprint::new(
+                                method_library_domain::content::FingerprintAlgorithm::Sha256,
+                                "different",
+                                "1.0",
+                            )
+                            .expect("fingerprint should build")
+                        } else {
+                            fingerprint.clone()
+                        }),
+                        payload: Some(MethodContentPayload::Qualification(Qualification {
+                            qualification_key: "quality-1".to_string(),
+                            name: "Snapshot Content".to_string(),
+                            description: None,
+                            level_model: QualificationLevelModel {
+                                levels: vec![QualificationLevel {
+                                    level_key: "basic".to_string(),
+                                    name: "Basic".to_string(),
+                                    order: 1,
+                                    description: None,
+                                }],
+                                default_level_key: Some("basic".to_string()),
+                            },
+                            evidence_rules: vec![EvidenceRule {
+                                evidence_kind: EvidenceKind::Document,
+                                required: true,
+                                description: "Proof".to_string(),
+                            }],
+                        })),
+                        references: snapshot
+                            .references
+                            .iter()
+                            .map(|reference| method_library_contracts::ContentRefView {
+                                target_content_id: reference.content_id.clone(),
+                                target_kind: reference.kind,
+                                target_version: Some(reference.version.clone()),
+                                target_fingerprint: Some(reference.fingerprint.clone()),
+                            })
+                            .collect(),
+                        revision: 3,
+                    },
+                    references: snapshot.references.clone(),
+                    generated_at: datetime!(2026-05-26 08:03:00 UTC),
+                    schema_version: "1.0".to_string(),
+                },
+            )
+            .expect("snapshot blob should insert");
+    }
+
+    async fn seed_view_profile(
+        repository: &Arc<InMemoryMethodContentRepository>,
+        content_id: &str,
+        project_type: &str,
+    ) {
+        let actor_id = "actor-1".to_string();
+        let mut content = MethodContent::create_draft(
+            content_id.to_string(),
+            format!("family-{content_id}"),
+            MethodContentKind::ViewProfile,
+            format!("View Profile {content_id}"),
+            Some("View profile".to_string()),
+            MethodContentPayload::ViewProfile(method_library_domain::definitions::ViewProfile {
+                role_ref: method_library_domain::content::PublishedContentRef {
+                    content_id: "role-1".to_string(),
+                    kind: MethodContentKind::RoleDefinition,
+                    version: ContentVersion::new("1.0.0").expect("version should build"),
+                    fingerprint: method_library_domain::content::CanonicalFingerprint::new(
+                        method_library_domain::content::FingerprintAlgorithm::Sha256,
+                        "role123",
+                        "1.0",
+                    )
+                    .expect("fingerprint should build"),
+                },
+                object_kind: method_library_domain::definitions::ViewObjectKind::WorkItem,
+                scope_rules: vec![method_library_domain::definitions::ViewScopeRule {
+                    scope_key: "default".to_string(),
+                    conditions: vec![method_library_domain::definitions::ViewCondition {
+                        field_path: "project.type".to_string(),
+                        operator: method_library_domain::definitions::ViewConditionOperator::Eq,
+                        value_json: Some(serde_json::json!(project_type)),
+                    }],
+                }],
+                field_rules: vec![method_library_domain::definitions::ViewFieldRule {
+                    field_path: "summary".to_string(),
+                    visibility: method_library_domain::definitions::FieldVisibility::Visible,
+                }],
+                action_rules: vec![method_library_domain::definitions::ViewActionRule {
+                    action_key: "edit".to_string(),
+                    availability: method_library_domain::definitions::ActionAvailability::Available,
+                }],
+            }),
+            actor_id.clone(),
+            datetime!(2026-05-26 08:00:00 UTC),
+        )
+        .expect("view profile should build");
+        content
+            .submit_for_review(actor_id.clone(), datetime!(2026-05-26 08:01:00 UTC))
+            .expect("review submission should work");
+        content
+            .publish(
+                method_library_domain::content::ApprovedGateRef {
+                    gate_id: "gate-1".to_string(),
+                    gate_decision_id: "decision-1".to_string(),
+                    approved_at: datetime!(2026-05-26 08:10:00 UTC),
+                },
+                ContentVersion::new("1.0.0").expect("version should build"),
+                method_library_domain::content::CanonicalFingerprint::new(
+                    method_library_domain::content::FingerprintAlgorithm::Sha256,
+                    format!("vp-{content_id}"),
+                    "1.0",
+                )
+                .expect("fingerprint should build"),
+                actor_id,
+                datetime!(2026-05-26 08:10:00 UTC),
+            )
+            .expect("publish should work");
+
+        let mut tx = FakeUnitOfWork
+            .begin(RequestMeta {
+                request_id: format!("req-{content_id}"),
+                trace_id: format!("trace-{content_id}"),
+                idempotency_key: Some(format!("idem-{content_id}")),
+                request_hash: format!("hash-{content_id}"),
+                received_at: datetime!(2026-05-26 08:00:00 UTC),
+            })
+            .await
+            .expect("transaction should open");
+        repository
+            .insert(&mut tx, content)
+            .await
+            .expect("view profile should insert");
+        tx.commit().await.expect("transaction should commit");
+    }
+
+    async fn seed_trace_projection(
+        repository: &Arc<InMemoryDefinitionTraceProjectionRepository>,
+        checkpoint_repository: &Arc<InMemoryProjectionCheckpointRepository>,
+        content_id: &str,
+    ) {
+        repository
+            .upsert(method_library_contracts::DefinitionTraceView {
+                content_id: content_id.to_string(),
+                versions: vec![method_library_contracts::ContentVersionView {
+                    content_id: content_id.to_string(),
+                    content_family_id: format!("family-{content_id}"),
+                    version: ContentVersion::new("1.0.0").expect("version should build"),
+                    fingerprint: method_library_domain::content::CanonicalFingerprint::new(
+                        method_library_domain::content::FingerprintAlgorithm::Sha256,
+                        "abc123",
+                        "1.0",
+                    )
+                    .expect("fingerprint should build"),
+                    snapshot_ref: None,
+                    published_at: datetime!(2026-05-26 08:03:00 UTC),
+                }],
+                lifecycle_history: vec![method_library_contracts::LifecycleHistoryEntryView {
+                    from_state: Some(method_library_domain::content::LifecycleState::InReview),
+                    to_state: method_library_domain::content::LifecycleState::Published,
+                    actor_id: "actor-1".to_string(),
+                    reason: Some("Published".to_string()),
+                    created_at: datetime!(2026-05-26 08:03:00 UTC),
+                }],
+                audit_records: vec![method_library_contracts::AuditRecordView {
+                    request_id: "req-trace".to_string(),
+                    trace_id: "trace-trace".to_string(),
+                    actor_ref: method_library_contracts::ActorRef {
+                        actor_id: "actor-1".to_string(),
+                        actor_kind: method_library_domain::content::ActorKind::Human,
+                    },
+                    action: "publish".to_string(),
+                    result: "succeeded".to_string(),
+                    occurred_at: datetime!(2026-05-26 08:03:00 UTC),
+                }],
+                outbox_events: vec![method_library_contracts::OutboxEventView {
+                    event_id: "evt-trace".to_string(),
+                    event_type: method_library_contracts::DefinitionEventType::ContentPublished,
+                    occurred_at: datetime!(2026-05-26 08:03:00 UTC),
+                    snapshot_ref: None,
+                }],
+                supersede_chain: vec![method_library_contracts::SupersedeLinkView {
+                    old_content_id: content_id.to_string(),
+                    new_content_id: "content-next".to_string(),
+                    reason: "Replaced".to_string(),
+                    created_at: datetime!(2026-05-26 08:05:00 UTC),
+                }],
+            })
+            .await
+            .expect("trace projection should upsert");
+        checkpoint_repository
+            .advance_if_current(
+                "definition_trace_projection".to_string(),
+                None,
+                "evt-trace".to_string(),
+                datetime!(2026-05-26 08:09:00 UTC),
+            )
+            .await
+            .expect("checkpoint should advance");
     }
 
     async fn seed_in_review_content(

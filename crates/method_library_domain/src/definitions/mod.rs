@@ -140,6 +140,19 @@ pub enum ViewObjectKind {
     Definition,
 }
 
+impl ViewObjectKind {
+    /// Returns the stable snake_case label used in APIs and logs.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::WorkItem => "work_item",
+            Self::Artifact => "artifact",
+            Self::Process => "process",
+            Self::Definition => "definition",
+        }
+    }
+}
+
 /// A single qualification level.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QualificationLevel {

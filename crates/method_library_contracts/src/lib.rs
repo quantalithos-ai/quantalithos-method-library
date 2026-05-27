@@ -36,12 +36,13 @@ pub use jobs::{
 pub use metadata::{CommandMetadata, RequestMeta};
 pub use queries::{
     ApiSchemaVersion, AuditRecordView, ContentRefView, ContentSummaryView, ContentVersionView,
-    DefinitionTraceView, GetDefinitionTraceQuery, GetDefinitionTraceResponse,
-    GetMethodContentQuery, GetMethodContentResponse, GetMethodContentVersionQuery,
-    GetMethodContentVersionResponse, LifecycleHistoryEntryView, ListMethodContentsQuery,
-    ListMethodContentsResponse, MethodContentView, OutboxEventView, PageCursor, PageInfo,
-    PageLimit, ReadConsistency, ReadMode, ReadSource, ResolveViewProfileQuery,
-    ResolveViewProfileResponse, ResolvedViewProfile, SupersedeLinkView, ViewResolveScope,
+    DefinitionTraceView, ExportDefinitionSnapshotQuery, GetDefinitionTraceQuery,
+    GetDefinitionTraceResponse, GetMethodContentQuery, GetMethodContentResponse,
+    GetMethodContentVersionQuery, GetMethodContentVersionResponse, LifecycleHistoryEntryView,
+    ListMethodContentsQuery, ListMethodContentsResponse, MethodContentView, OutboxEventView,
+    PageCursor, PageInfo, PageLimit, ReadConsistency, ReadMode, ReadSource,
+    ResolveViewProfileQuery, ResolveViewProfileResponse, ResolvedViewProfile, SupersedeLinkView,
+    ViewResolveScope,
 };
 pub use snapshots::{
     DefinitionSnapshot, ExportDefinitionSnapshotResponse, SnapshotBlobRef, SnapshotPayload,

@@ -324,6 +324,8 @@ pub struct ExportDefinitionSnapshotQuery {
 /// Response DTO for resolving a view profile.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResolveViewProfileResponse {
+    /// Response schema version.
+    pub schema_version: ApiSchemaVersion,
     /// Resolved view profile if one matched.
     pub view_profile: Option<ResolvedViewProfile>,
     /// Read consistency marker.
@@ -357,10 +359,16 @@ pub struct GetDefinitionTraceQuery {
 /// Response DTO for retrieving a definition trace.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GetDefinitionTraceResponse {
+    /// Response schema version.
+    pub schema_version: ApiSchemaVersion,
+    /// Target content identifier.
+    pub content_id: ContentId,
     /// Trace read model.
     pub trace: DefinitionTraceView,
     /// Optional pagination metadata.
     pub page: Option<PageInfo>,
+    /// Read consistency marker.
+    pub consistency: ReadConsistency,
 }
 
 #[cfg(test)]

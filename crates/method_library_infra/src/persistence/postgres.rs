@@ -20,8 +20,9 @@ use method_library_contracts::{
     ListMethodContentsQuery, RequestMeta,
 };
 use method_library_domain::content::{
-    ContentId, ContentVersion, IdempotencyKey, LeaseDuration, MethodContent, OutboxEventId,
-    PublishedContentRef, RequestHash, RequestId, Revision, SnapshotId, Timestamp, WorkerId,
+    ContentId, ContentVersion, IdempotencyKey, LeaseDuration, MethodContent, MethodContentKind,
+    OutboxEventId, PublishedContentRef, RequestHash, RequestId, Revision, SnapshotId, Timestamp,
+    WorkerId,
 };
 use method_library_domain::{MethodLibraryError, MethodLibraryErrorCode};
 use serde_json::Value as JsonValue;
@@ -421,6 +422,27 @@ impl MethodContentRepository for PostgresMethodContentRepository {
             MethodContent::rehydrate(content)
         })
         .transpose()
+    }
+
+    async fn find_published_by_kind(
+        &self,
+        kind: MethodContentKind,
+    ) -> Result<Vec<MethodContent>, MethodLibraryError> {
+        let rows = sqlx::query(&format!(
+            "select content_json from {METHOD_CONTENTS_TABLE} where kind = $1 and lifecycle_state = 'published' order by content_id"
+        ))
+        .bind(kind.as_str())
+        .fetch_all(&self.state.pool)
+        .await
+        .map_err(map_sqlx_error)?;
+
+        rows.into_iter()
+            .map(|row| -> Result<MethodContent, MethodLibraryError> {
+                let Json(content): Json<MethodContent> =
+                    row.try_get("content_json").map_err(map_sqlx_error)?;
+                MethodContent::rehydrate(content)
+            })
+            .collect()
     }
 
     async fn get_for_update(

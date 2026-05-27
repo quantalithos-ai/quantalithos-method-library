@@ -29,6 +29,8 @@ pub enum MethodLibraryErrorCode {
     PageLimitExceeded,
     /// A query filter or sort key was malformed or unsupported.
     FilterInvalid,
+    /// Multiple published view profiles matched one resolution request.
+    ViewProfileAmbiguous,
     /// The requested method-content aggregate did not exist.
     MethodContentNotFound,
     /// A requested published version did not exist.
@@ -112,6 +114,7 @@ impl MethodLibraryErrorCode {
             Self::ReferenceNotPublished => "REFERENCE_NOT_PUBLISHED",
             Self::PageLimitExceeded => "PAGE_LIMIT_EXCEEDED",
             Self::FilterInvalid => "FILTER_INVALID",
+            Self::ViewProfileAmbiguous => "VIEW_PROFILE_AMBIGUOUS",
             Self::MethodContentNotFound => "METHOD_CONTENT_NOT_FOUND",
             Self::ContentVersionNotFound => "CONTENT_VERSION_NOT_FOUND",
             Self::SnapshotNotFound => "SNAPSHOT_NOT_FOUND",
