@@ -241,6 +241,13 @@ impl InMemoryIdempotencyRepository {
     }
 }
 
+impl InMemoryLifecycleHistoryRepository {
+    /// Returns the stored lifecycle-history entries for inspection.
+    pub fn entries(&self) -> Result<Vec<LifecycleHistoryEntry>, MethodLibraryError> {
+        Ok(lock(&self.entries)?.clone())
+    }
+}
+
 impl InMemoryOutboxRepository {
     /// Returns the stored outbox records for inspection.
     pub fn events(&self) -> Result<HashMap<OutboxEventId, OutboxEvent>, MethodLibraryError> {
