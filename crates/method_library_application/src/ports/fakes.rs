@@ -259,6 +259,13 @@ impl InMemoryMethodContentVersionRepository {
     }
 }
 
+impl InMemorySupersedeLinkRepository {
+    /// Returns the stored supersede-link records for inspection.
+    pub fn links(&self) -> Result<Vec<SupersedeLink>, MethodLibraryError> {
+        Ok(lock(&self.links)?.clone())
+    }
+}
+
 impl InMemoryIdempotencyRepository {
     /// Returns the stored idempotency records for inspection.
     pub fn records(
@@ -581,7 +588,17 @@ impl SupersedeLinkRepository for InMemorySupersedeLinkRepository {
         link: SupersedeLink,
     ) -> Result<(), MethodLibraryError> {
         tx.ensure_open()?;
-        lock(&self.links)?.push(link);
+        let mut links = lock(&self.links)?;
+        if links
+            .iter()
+            .any(|existing| existing.old_content_id == link.old_content_id)
+        {
+            return Err(MethodLibraryError::validation(
+                MethodLibraryErrorCode::SupersedeConflict,
+                "old content already has a supersede link",
+            ));
+        }
+        links.push(link);
         Ok(())
     }
 }

@@ -14,13 +14,16 @@ use method_library_application::ports::fakes::{
     InMemoryAuditRepository, InMemoryDefinitionSnapshotRepository, InMemoryIdempotencyRepository,
     InMemoryLifecycleHistoryRepository, InMemoryMethodContentReferenceRepository,
     InMemoryMethodContentRepository, InMemoryMethodContentVersionRepository, InMemoryObjectStorage,
-    InMemoryOutboxRepository, StaticGovernancePort,
+    InMemoryOutboxRepository, InMemorySupersedeLinkRepository, StaticGovernancePort,
 };
 use method_library_contracts::{
-    CreateMethodContentDraftCommand, CreateMethodContentDraftResponse, ErrorResponse,
+    CreateMethodContentDraftCommand, CreateMethodContentDraftResponse,
+    DeprecateMethodContentCommand, DeprecateMethodContentResponse, ErrorResponse,
     PlaceholderContract, PublishMethodContentCommand, PublishMethodContentResponse,
-    SubmitMethodContentForReviewCommand, SubmitMethodContentForReviewResponse,
-    UpdateMethodContentDraftCommand, UpdateMethodContentDraftResponse,
+    RetireMethodContentCommand, RetireMethodContentResponse, SubmitMethodContentForReviewCommand,
+    SubmitMethodContentForReviewResponse, SupersedeMethodContentCommand,
+    SupersedeMethodContentResponse, UpdateMethodContentDraftCommand,
+    UpdateMethodContentDraftResponse,
 };
 use method_library_domain::{MethodLibraryError, MethodLibraryErrorCode};
 use serde::{Serialize, de::DeserializeOwned};
@@ -60,6 +63,7 @@ impl AppState {
             Arc::new(InMemoryMethodContentReferenceRepository::default()),
             Arc::new(InMemoryMethodContentVersionRepository::default()),
             Arc::new(InMemoryDefinitionSnapshotRepository::default()),
+            Arc::new(InMemorySupersedeLinkRepository::default()),
             Arc::new(InMemoryOutboxRepository::default()),
             Arc::new(InMemoryLifecycleHistoryRepository::default()),
             Arc::new(InMemoryAuditRepository::default()),
@@ -302,6 +306,9 @@ async fn update_method_content_draft(
 enum MethodContentAction {
     SubmitReview,
     Publish,
+    Deprecate,
+    Retire,
+    Supersede,
 }
 
 async fn dispatch_method_content_action(
@@ -338,6 +345,36 @@ async fn dispatch_method_content_action(
                 &gateway.headers.trace_id,
             )?;
             publish_method_content(&state, &gateway, path_content_id, command)
+                .await
+                .map(IntoResponse::into_response)
+        }
+        MethodContentAction::Deprecate => {
+            let command: DeprecateMethodContentCommand = decode_action_command(
+                payload,
+                &gateway.headers.request_id,
+                &gateway.headers.trace_id,
+            )?;
+            deprecate_method_content(&state, &gateway, path_content_id, command)
+                .await
+                .map(IntoResponse::into_response)
+        }
+        MethodContentAction::Retire => {
+            let command: RetireMethodContentCommand = decode_action_command(
+                payload,
+                &gateway.headers.request_id,
+                &gateway.headers.trace_id,
+            )?;
+            retire_method_content(&state, &gateway, path_content_id, command)
+                .await
+                .map(IntoResponse::into_response)
+        }
+        MethodContentAction::Supersede => {
+            let command: SupersedeMethodContentCommand = decode_action_command(
+                payload,
+                &gateway.headers.request_id,
+                &gateway.headers.trace_id,
+            )?;
+            supersede_method_content(&state, &gateway, path_content_id, command)
                 .await
                 .map(IntoResponse::into_response)
         }
@@ -555,6 +592,318 @@ async fn publish_method_content(
     }
 }
 
+async fn deprecate_method_content(
+    state: &AppState,
+    gateway: &GatewayContextExtractor,
+    path_content_id: &str,
+    command: DeprecateMethodContentCommand,
+) -> Result<(StatusCode, Json<DeprecateMethodContentResponse>), (StatusCode, Json<ErrorResponse>)> {
+    let target_content_id = command.content_id.clone();
+    log_api_request(
+        gateway,
+        "deprecate",
+        "POST",
+        "/contents/{content_id}:deprecate",
+        Some(&target_content_id),
+    );
+    validate_path_content_id(path_content_id, &command.content_id).map_err(|error| {
+        log_api_error(
+            gateway,
+            "deprecate",
+            "POST",
+            "/contents/{content_id}:deprecate",
+            StatusCode::BAD_REQUEST,
+            Some(&target_content_id),
+            &error,
+        );
+        error_response(
+            StatusCode::BAD_REQUEST,
+            gateway.headers.request_id.clone(),
+            gateway.headers.trace_id.clone(),
+            error,
+        )
+    })?;
+    let request_hash = canonical_request_hash(&command).map_err(|error| {
+        log_api_error(
+            gateway,
+            "deprecate",
+            "POST",
+            "/contents/{content_id}:deprecate",
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Some(&target_content_id),
+            &error,
+        );
+        error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            gateway.headers.request_id.clone(),
+            gateway.headers.trace_id.clone(),
+            error,
+        )
+    })?;
+    let meta = gateway
+        .request_meta(request_hash, state.received_at())
+        .map_err(|error| {
+            log_api_error(
+                gateway,
+                "deprecate",
+                "POST",
+                "/contents/{content_id}:deprecate",
+                StatusCode::BAD_REQUEST,
+                Some(&target_content_id),
+                &error,
+            );
+            error_response(
+                StatusCode::BAD_REQUEST,
+                gateway.headers.request_id.clone(),
+                gateway.headers.trace_id.clone(),
+                error,
+            )
+        })?;
+
+    match state
+        .command_service
+        .deprecate(command, gateway.actor.clone(), meta)
+        .await
+    {
+        Ok(response) => {
+            log_api_success(
+                gateway,
+                "deprecate",
+                "POST",
+                "/contents/{content_id}:deprecate",
+                StatusCode::OK,
+                Some(&response.content_id),
+            );
+            Ok((StatusCode::OK, Json(response)))
+        }
+        Err(error) => {
+            let mapped = map_error_response(
+                gateway.headers.request_id.clone(),
+                gateway.headers.trace_id.clone(),
+                error.clone(),
+            );
+            log_api_error(
+                gateway,
+                "deprecate",
+                "POST",
+                "/contents/{content_id}:deprecate",
+                mapped.0,
+                Some(&target_content_id),
+                &error,
+            );
+            Err(mapped)
+        }
+    }
+}
+
+async fn retire_method_content(
+    state: &AppState,
+    gateway: &GatewayContextExtractor,
+    path_content_id: &str,
+    command: RetireMethodContentCommand,
+) -> Result<(StatusCode, Json<RetireMethodContentResponse>), (StatusCode, Json<ErrorResponse>)> {
+    let target_content_id = command.content_id.clone();
+    log_api_request(
+        gateway,
+        "retire",
+        "POST",
+        "/contents/{content_id}:retire",
+        Some(&target_content_id),
+    );
+    validate_path_content_id(path_content_id, &command.content_id).map_err(|error| {
+        log_api_error(
+            gateway,
+            "retire",
+            "POST",
+            "/contents/{content_id}:retire",
+            StatusCode::BAD_REQUEST,
+            Some(&target_content_id),
+            &error,
+        );
+        error_response(
+            StatusCode::BAD_REQUEST,
+            gateway.headers.request_id.clone(),
+            gateway.headers.trace_id.clone(),
+            error,
+        )
+    })?;
+    let request_hash = canonical_request_hash(&command).map_err(|error| {
+        log_api_error(
+            gateway,
+            "retire",
+            "POST",
+            "/contents/{content_id}:retire",
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Some(&target_content_id),
+            &error,
+        );
+        error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            gateway.headers.request_id.clone(),
+            gateway.headers.trace_id.clone(),
+            error,
+        )
+    })?;
+    let meta = gateway
+        .request_meta(request_hash, state.received_at())
+        .map_err(|error| {
+            log_api_error(
+                gateway,
+                "retire",
+                "POST",
+                "/contents/{content_id}:retire",
+                StatusCode::BAD_REQUEST,
+                Some(&target_content_id),
+                &error,
+            );
+            error_response(
+                StatusCode::BAD_REQUEST,
+                gateway.headers.request_id.clone(),
+                gateway.headers.trace_id.clone(),
+                error,
+            )
+        })?;
+
+    match state
+        .command_service
+        .retire(command, gateway.actor.clone(), meta)
+        .await
+    {
+        Ok(response) => {
+            log_api_success(
+                gateway,
+                "retire",
+                "POST",
+                "/contents/{content_id}:retire",
+                StatusCode::OK,
+                Some(&response.content_id),
+            );
+            Ok((StatusCode::OK, Json(response)))
+        }
+        Err(error) => {
+            let mapped = map_error_response(
+                gateway.headers.request_id.clone(),
+                gateway.headers.trace_id.clone(),
+                error.clone(),
+            );
+            log_api_error(
+                gateway,
+                "retire",
+                "POST",
+                "/contents/{content_id}:retire",
+                mapped.0,
+                Some(&target_content_id),
+                &error,
+            );
+            Err(mapped)
+        }
+    }
+}
+
+async fn supersede_method_content(
+    state: &AppState,
+    gateway: &GatewayContextExtractor,
+    path_old_content_id: &str,
+    command: SupersedeMethodContentCommand,
+) -> Result<(StatusCode, Json<SupersedeMethodContentResponse>), (StatusCode, Json<ErrorResponse>)> {
+    let target_content_id = command.old_content_id.clone();
+    log_api_request(
+        gateway,
+        "supersede",
+        "POST",
+        "/contents/{content_id}:supersede",
+        Some(&target_content_id),
+    );
+    validate_path_content_id(path_old_content_id, &command.old_content_id).map_err(|error| {
+        log_api_error(
+            gateway,
+            "supersede",
+            "POST",
+            "/contents/{content_id}:supersede",
+            StatusCode::BAD_REQUEST,
+            Some(&target_content_id),
+            &error,
+        );
+        error_response(
+            StatusCode::BAD_REQUEST,
+            gateway.headers.request_id.clone(),
+            gateway.headers.trace_id.clone(),
+            error,
+        )
+    })?;
+    let request_hash = canonical_request_hash(&command).map_err(|error| {
+        log_api_error(
+            gateway,
+            "supersede",
+            "POST",
+            "/contents/{content_id}:supersede",
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Some(&target_content_id),
+            &error,
+        );
+        error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            gateway.headers.request_id.clone(),
+            gateway.headers.trace_id.clone(),
+            error,
+        )
+    })?;
+    let meta = gateway
+        .request_meta(request_hash, state.received_at())
+        .map_err(|error| {
+            log_api_error(
+                gateway,
+                "supersede",
+                "POST",
+                "/contents/{content_id}:supersede",
+                StatusCode::BAD_REQUEST,
+                Some(&target_content_id),
+                &error,
+            );
+            error_response(
+                StatusCode::BAD_REQUEST,
+                gateway.headers.request_id.clone(),
+                gateway.headers.trace_id.clone(),
+                error,
+            )
+        })?;
+
+    match state
+        .command_service
+        .supersede(command, gateway.actor.clone(), meta)
+        .await
+    {
+        Ok(response) => {
+            log_api_success(
+                gateway,
+                "supersede",
+                "POST",
+                "/contents/{content_id}:supersede",
+                StatusCode::OK,
+                Some(&response.old_content_id),
+            );
+            Ok((StatusCode::OK, Json(response)))
+        }
+        Err(error) => {
+            let mapped = map_error_response(
+                gateway.headers.request_id.clone(),
+                gateway.headers.trace_id.clone(),
+                error.clone(),
+            );
+            log_api_error(
+                gateway,
+                "supersede",
+                "POST",
+                "/contents/{content_id}:supersede",
+                mapped.0,
+                Some(&target_content_id),
+                &error,
+            );
+            Err(mapped)
+        }
+    }
+}
+
 fn canonical_request_hash(command: &impl Serialize) -> Result<String, MethodLibraryError> {
     let canonical = serde_json::to_string(command).map_err(|error| {
         MethodLibraryError::retryable(
@@ -603,6 +952,9 @@ fn parse_method_content_action(
     let action = match action {
         "submit-review" => MethodContentAction::SubmitReview,
         "publish" => MethodContentAction::Publish,
+        "deprecate" => MethodContentAction::Deprecate,
+        "retire" => MethodContentAction::Retire,
+        "supersede" => MethodContentAction::Supersede,
         _ => {
             return Err(MethodLibraryError::validation(
                 MethodLibraryErrorCode::BoundaryViolation,
@@ -641,13 +993,17 @@ fn map_error_response(
         MethodLibraryErrorCode::BoundaryViolation
         | MethodLibraryErrorCode::ReferenceInvalid
         | MethodLibraryErrorCode::PayloadKindMismatch
-        | MethodLibraryErrorCode::ReferenceNotPublished => StatusCode::UNPROCESSABLE_ENTITY,
+        | MethodLibraryErrorCode::ReferenceNotPublished
+        | MethodLibraryErrorCode::SupersedeKindMismatch
+        | MethodLibraryErrorCode::SupersedeTargetRequired => StatusCode::UNPROCESSABLE_ENTITY,
         MethodLibraryErrorCode::PublishGateRequired
         | MethodLibraryErrorCode::PublishGateInvalid => StatusCode::FAILED_DEPENDENCY,
         MethodLibraryErrorCode::IdempotencyConflict
         | MethodLibraryErrorCode::IdempotencyStatusConflict
         | MethodLibraryErrorCode::LifecycleTransitionNotAllowed
-        | MethodLibraryErrorCode::PublishedContentImmutable => StatusCode::CONFLICT,
+        | MethodLibraryErrorCode::PublishedContentImmutable
+        | MethodLibraryErrorCode::SupersedeConflict
+        | MethodLibraryErrorCode::ContentVersionConflict => StatusCode::CONFLICT,
         MethodLibraryErrorCode::MethodContentNotFound => StatusCode::NOT_FOUND,
         MethodLibraryErrorCode::RevisionConflict => StatusCode::PRECONDITION_FAILED,
         MethodLibraryErrorCode::GovernanceUnavailable
@@ -788,7 +1144,7 @@ mod tests {
         InMemoryIdempotencyRepository, InMemoryLifecycleHistoryRepository,
         InMemoryMethodContentReferenceRepository, InMemoryMethodContentRepository,
         InMemoryMethodContentVersionRepository, InMemoryObjectStorage, InMemoryOutboxRepository,
-        StaticGovernancePort,
+        InMemorySupersedeLinkRepository, StaticGovernancePort,
     };
     use method_library_application::{
         MethodContentCommandService, MethodContentRepository, UnitOfWork,
@@ -816,6 +1172,7 @@ mod tests {
         let reference_repository = Arc::new(InMemoryMethodContentReferenceRepository::default());
         let version_repository = Arc::new(InMemoryMethodContentVersionRepository::default());
         let snapshot_repository = Arc::new(InMemoryDefinitionSnapshotRepository::default());
+        let supersede_link_repository = Arc::new(InMemorySupersedeLinkRepository::default());
         let outbox_repository = Arc::new(InMemoryOutboxRepository::default());
         let object_storage = Arc::new(InMemoryObjectStorage::default());
         let lifecycle_history_repository = Arc::new(InMemoryLifecycleHistoryRepository::default());
@@ -832,6 +1189,7 @@ mod tests {
             reference_repository,
             version_repository.clone(),
             snapshot_repository.clone(),
+            supersede_link_repository,
             outbox_repository.clone(),
             lifecycle_history_repository.clone(),
             audit_repository,
@@ -884,6 +1242,47 @@ mod tests {
                 "approved_at": "2026-05-26T08:10:00Z"
             },
             "publish_reason": "Initial release"
+        })
+    }
+
+    fn sample_deprecate_body(content_id: &str, expected_revision: i64) -> serde_json::Value {
+        serde_json::json!({
+            "content_id": content_id,
+            "expected_revision": expected_revision,
+            "reason": "Superseded by newer guidance",
+            "effective_at": "2026-05-26T08:20:00Z"
+        })
+    }
+
+    fn sample_retire_body(content_id: &str, expected_revision: i64) -> serde_json::Value {
+        serde_json::json!({
+            "content_id": content_id,
+            "expected_revision": expected_revision,
+            "reason": "Retired for trace-only retention",
+            "retire_policy": "stop_new_usage"
+        })
+    }
+
+    fn sample_supersede_body(
+        old_content_id: &str,
+        old_expected_revision: i64,
+        new_content_id: &str,
+        new_expected_revision: i64,
+        gate_id: &str,
+        gate_decision_id: &str,
+    ) -> serde_json::Value {
+        serde_json::json!({
+            "old_content_id": old_content_id,
+            "old_expected_revision": old_expected_revision,
+            "new_content_id": new_content_id,
+            "new_expected_revision": new_expected_revision,
+            "new_version": "2.0.0",
+            "approved_gate_ref": {
+                "gate_id": gate_id,
+                "gate_decision_id": gate_decision_id,
+                "approved_at": "2026-05-26T08:15:00Z"
+            },
+            "reason": "Replaced by a newer definition"
         })
     }
 
@@ -1377,6 +1776,84 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn deprecates_published_content_via_http() {
+        let (state, content_repository, _, _, _, _, _) = test_state();
+        seed_published_content(&content_repository, "content-published").await;
+        let app = router_with_state(state);
+
+        let response = app
+            .oneshot(build_gateway_request(
+                "POST",
+                api_path("/contents/content-published:deprecate"),
+                Some("idem-4"),
+                sample_deprecate_body("content-published", 3),
+            ))
+            .await
+            .expect("deprecate route should respond");
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn retires_published_content_via_http() {
+        let (state, content_repository, _, _, _, _, _) = test_state();
+        seed_published_content(&content_repository, "content-published").await;
+        let app = router_with_state(state);
+
+        let response = app
+            .oneshot(build_gateway_request(
+                "POST",
+                api_path("/contents/content-published:retire"),
+                Some("idem-4"),
+                sample_retire_body("content-published", 3),
+            ))
+            .await
+            .expect("retire route should respond");
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn supersedes_content_via_http() {
+        let (state, content_repository, _, _, _, _, _) = test_state();
+        seed_published_content(&content_repository, "content-old").await;
+        seed_in_review_content(&content_repository, "content-new").await;
+        let app = router_with_state(state);
+
+        let response = app
+            .oneshot(build_gateway_request(
+                "POST",
+                api_path("/contents/content-old:supersede"),
+                Some("idem-4"),
+                sample_supersede_body("content-old", 3, "content-new", 2, "gate-1", "decision-1"),
+            ))
+            .await
+            .expect("supersede route should respond");
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn rejects_supersede_path_body_mismatch_via_http() {
+        let response = router()
+            .oneshot(build_gateway_request(
+                "POST",
+                api_path("/contents/content-a:supersede"),
+                Some("idem-4"),
+                sample_supersede_body("content-b", 3, "content-new", 2, "gate-1", "decision-1"),
+            ))
+            .await
+            .expect("router should respond");
+
+        assert_error_code(
+            response,
+            StatusCode::BAD_REQUEST,
+            MethodLibraryErrorCode::PathBodyMismatch,
+        )
+        .await;
+    }
+
+    #[tokio::test]
     async fn rejects_missing_idempotency_key_via_http() {
         let response = router()
             .oneshot(build_gateway_request(
@@ -1688,6 +2165,64 @@ mod tests {
             .insert(&mut tx, content)
             .await
             .expect("content should insert");
+        tx.commit().await.expect("transaction should commit");
+
+        content_id.to_string()
+    }
+
+    async fn seed_in_review_content(
+        repository: &Arc<InMemoryMethodContentRepository>,
+        content_id: &str,
+    ) -> String {
+        let actor_id = "actor-1".to_string();
+        let mut content = MethodContent::create_draft(
+            content_id.to_string(),
+            format!("family-{content_id}"),
+            MethodContentKind::Qualification,
+            "Quality Replacement".to_string(),
+            None,
+            MethodContentPayload::Qualification(Qualification {
+                qualification_key: "quality-2".to_string(),
+                name: "Quality Replacement".to_string(),
+                description: None,
+                level_model: QualificationLevelModel {
+                    levels: vec![QualificationLevel {
+                        level_key: "advanced".to_string(),
+                        name: "Advanced".to_string(),
+                        order: 1,
+                        description: None,
+                    }],
+                    default_level_key: Some("advanced".to_string()),
+                },
+                evidence_rules: vec![EvidenceRule {
+                    evidence_kind: EvidenceKind::Document,
+                    required: true,
+                    description: "Replacement proof".to_string(),
+                }],
+            }),
+            actor_id.clone(),
+            datetime!(2026-05-26 08:00:00 UTC),
+        )
+        .expect("draft should build");
+        content
+            .submit_for_review(actor_id, datetime!(2026-05-26 08:05:00 UTC))
+            .expect("review submission should work");
+
+        let meta = RequestMeta {
+            request_id: "req-1".to_string(),
+            trace_id: "trace-1".to_string(),
+            idempotency_key: Some("idem-seed-review".to_string()),
+            request_hash: "hash-seed-review".to_string(),
+            received_at: datetime!(2026-05-26 08:00:00 UTC),
+        };
+        let mut tx = FakeUnitOfWork
+            .begin(meta)
+            .await
+            .expect("transaction should open");
+        repository
+            .insert(&mut tx, content)
+            .await
+            .expect("in-review content should insert");
         tx.commit().await.expect("transaction should commit");
 
         content_id.to_string()

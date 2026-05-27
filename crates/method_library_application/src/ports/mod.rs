@@ -180,6 +180,8 @@ pub struct SupersedeLink {
     pub old_content_id: ContentId,
     /// New content identifier.
     pub new_content_id: ContentId,
+    /// Shared content family identifier for the replacement chain.
+    pub content_family_id: ContentFamilyId,
     /// Human-readable reason.
     pub reason: String,
     /// Creation timestamp.

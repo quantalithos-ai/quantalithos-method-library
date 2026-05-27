@@ -653,11 +653,12 @@ impl SupersedeLinkRepository for PostgresSupersedeLinkRepository {
         let mut connection = connection.lock().await;
         let connection = &mut **connection;
         let result = sqlx::query(&format!(
-            "insert into {SUPERSEDE_LINKS_TABLE} (supersede_link_id, old_content_id, new_content_id, reason, created_at) values ($1,$2,$3,$4,$5)"
+            "insert into {SUPERSEDE_LINKS_TABLE} (supersede_link_id, old_content_id, new_content_id, content_family_id, reason, created_at) values ($1,$2,$3,$4,$5,$6)"
         ))
         .bind(&link.supersede_link_id)
         .bind(&link.old_content_id)
         .bind(&link.new_content_id)
+        .bind(&link.content_family_id)
         .bind(&link.reason)
         .bind(link.created_at)
         .execute(&mut *connection)
@@ -1461,16 +1462,24 @@ impl PostgresTestDatabase {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::{Arc, Mutex, OnceLock};
 
     use time::macros::datetime;
 
     use super::*;
-    use method_library_application::ports::UnitOfWork;
-    use method_library_contracts::RequestMeta;
+    use method_library_application::ports::SupersedeLink;
+    use method_library_application::ports::fakes::{
+        DeterministicClock, DeterministicFingerprintHasher, DeterministicIdGenerator,
+        InMemoryObjectStorage, StaticGovernancePort,
+    };
+    use method_library_application::{MethodContentCommandService, UnitOfWork};
+    use method_library_contracts::{
+        ActorContext, EventTraceContext, PublishMethodContentCommand, RequestMeta,
+        SupersedeMethodContentCommand,
+    };
     use method_library_domain::content::{
-        ApprovedGateRef, CanonicalFingerprint, ContentVersion, FingerprintAlgorithm, MethodContent,
-        MethodContentKind, PublishedContentRef,
+        ActorKind, ApprovedGateRef, CanonicalFingerprint, ContentVersion, FingerprintAlgorithm,
+        LifecycleState, MethodContent, MethodContentKind, PublishedContentRef,
     };
     use method_library_domain::definitions::{
         EvidenceKind, EvidenceRule, MethodContentPayload, Qualification, QualificationLevel,
@@ -1563,6 +1572,217 @@ mod tests {
             snapshot_id: format!("snap-{content_version_id}"),
             published_at: datetime!(2026-05-26 08:00:00 UTC),
         }
+    }
+
+    fn sample_actor() -> ActorContext {
+        ActorContext {
+            actor_id: "actor-1".to_string(),
+            actor_kind: ActorKind::Human,
+            actor_ref: method_library_contracts::ActorRef {
+                actor_id: "actor-1".to_string(),
+                actor_kind: ActorKind::Human,
+            },
+        }
+    }
+
+    fn sample_meta_with(idempotency_key: &str, request_hash: &str) -> RequestMeta {
+        RequestMeta {
+            request_id: "req-1".to_string(),
+            trace_id: "trace-1".to_string(),
+            idempotency_key: Some(idempotency_key.to_string()),
+            request_hash: request_hash.to_string(),
+            received_at: datetime!(2026-05-26 08:00:00 UTC),
+        }
+    }
+
+    fn command_service(persistence: &PostgresPersistence) -> MethodContentCommandService {
+        MethodContentCommandService::new(
+            Arc::new(persistence.unit_of_work()),
+            Arc::new(persistence.method_content_repository()),
+            Arc::new(persistence.method_content_reference_repository()),
+            Arc::new(persistence.method_content_version_repository()),
+            Arc::new(persistence.snapshot_repository()),
+            Arc::new(persistence.supersede_link_repository()),
+            Arc::new(persistence.outbox_repository()),
+            Arc::new(persistence.lifecycle_history_repository()),
+            Arc::new(persistence.audit_repository()),
+            Arc::new(persistence.idempotency_repository()),
+            Arc::new(StaticGovernancePort::new(
+                true,
+                datetime!(2026-05-26 08:00:00 UTC),
+            )),
+            Arc::new(InMemoryObjectStorage::default()),
+            Arc::new(DeterministicFingerprintHasher::default()),
+            Arc::new(DeterministicClock::new(datetime!(2026-05-26 08:00:00 UTC))),
+            Arc::new(DeterministicIdGenerator::default()),
+        )
+    }
+
+    fn sample_in_review_content(content_id: &str, family_id: &str) -> MethodContent {
+        let mut content = MethodContent::create_draft(
+            content_id.to_string(),
+            family_id.to_string(),
+            MethodContentKind::Qualification,
+            format!("Quality {content_id}"),
+            None,
+            MethodContentPayload::Qualification(Qualification {
+                qualification_key: format!("quality-{content_id}"),
+                name: format!("Quality {content_id}"),
+                description: None,
+                level_model: QualificationLevelModel {
+                    levels: vec![QualificationLevel {
+                        level_key: "basic".to_string(),
+                        name: "Basic".to_string(),
+                        order: 1,
+                        description: None,
+                    }],
+                    default_level_key: Some("basic".to_string()),
+                },
+                evidence_rules: vec![EvidenceRule {
+                    evidence_kind: EvidenceKind::Document,
+                    required: true,
+                    description: "Proof".to_string(),
+                }],
+            }),
+            "actor-1".to_string(),
+            datetime!(2026-05-26 08:00:00 UTC),
+        )
+        .expect("fixture content should build");
+        content
+            .submit_for_review("actor-1".to_string(), datetime!(2026-05-26 08:05:00 UTC))
+            .expect("fixture should enter review");
+        content
+    }
+
+    fn sample_published_content(content_id: &str, family_id: &str) -> MethodContent {
+        let mut content = sample_in_review_content(content_id, family_id);
+        content
+            .publish(
+                ApprovedGateRef {
+                    gate_id: "gate-1".to_string(),
+                    gate_decision_id: "decision-1".to_string(),
+                    approved_at: datetime!(2026-05-26 08:10:00 UTC),
+                },
+                ContentVersion::new("1.0.0").expect("version should be valid"),
+                CanonicalFingerprint::new(FingerprintAlgorithm::Sha256, "abc123", "1.0")
+                    .expect("fingerprint should be valid"),
+                "actor-1".to_string(),
+                datetime!(2026-05-26 08:10:00 UTC),
+            )
+            .expect("fixture should publish");
+        content
+    }
+
+    async fn insert_content(
+        persistence: &PostgresPersistence,
+        content: MethodContent,
+        idempotency_key: &str,
+    ) {
+        let repository = persistence.method_content_repository();
+        let mut tx = persistence
+            .unit_of_work()
+            .begin(sample_meta_with(
+                idempotency_key,
+                &format!("hash-{idempotency_key}"),
+            ))
+            .await
+            .expect("transaction should begin");
+        repository
+            .insert(&mut tx, content)
+            .await
+            .expect("content should insert");
+        tx.commit().await.expect("commit should succeed");
+    }
+
+    fn sample_publish_command(
+        content_id: &str,
+        expected_revision: i64,
+    ) -> PublishMethodContentCommand {
+        PublishMethodContentCommand {
+            content_id: content_id.to_string(),
+            expected_revision,
+            version: ContentVersion::new("1.0.0").expect("version should be valid"),
+            approved_gate_ref: ApprovedGateRef {
+                gate_id: "gate-1".to_string(),
+                gate_decision_id: "decision-1".to_string(),
+                approved_at: datetime!(2026-05-26 08:10:00 UTC),
+            },
+            publish_reason: "Initial release".to_string(),
+        }
+    }
+
+    fn sample_supersede_command(
+        old_content_id: &str,
+        old_expected_revision: i64,
+        new_content_id: &str,
+        new_expected_revision: i64,
+    ) -> SupersedeMethodContentCommand {
+        SupersedeMethodContentCommand {
+            old_content_id: old_content_id.to_string(),
+            old_expected_revision,
+            new_content_id: new_content_id.to_string(),
+            new_expected_revision,
+            new_version: ContentVersion::new("2.0.0").expect("version should be valid"),
+            approved_gate_ref: ApprovedGateRef {
+                gate_id: "gate-1".to_string(),
+                gate_decision_id: "decision-1".to_string(),
+                approved_at: datetime!(2026-05-26 08:15:00 UTC),
+            },
+            reason: "Replaced by a newer definition".to_string(),
+        }
+    }
+
+    fn sample_outbox_event(
+        event_id: &str,
+        aggregate_id: &str,
+        idempotency_key: Option<&str>,
+    ) -> OutboxEvent {
+        OutboxEvent::new_pending(
+            event_id.to_string(),
+            aggregate_id.to_string(),
+            DefinitionEventEnvelope {
+                event_id: event_id.to_string(),
+                event_type: method_library_contracts::DefinitionEventType::ContentPublished,
+                schema_version: "1.0".to_string(),
+                occurred_at: datetime!(2026-05-26 08:10:00 UTC),
+                producer: "L3-method-library".to_string(),
+                content_ref: PublishedContentRef {
+                    content_id: aggregate_id.to_string(),
+                    kind: MethodContentKind::Qualification,
+                    version: ContentVersion::new("1.0.0").expect("version should be valid"),
+                    fingerprint: CanonicalFingerprint::new(
+                        FingerprintAlgorithm::Sha256,
+                        "abc123",
+                        "1.0",
+                    )
+                    .expect("fingerprint should be valid"),
+                },
+                snapshot_ref: None,
+                trace: EventTraceContext {
+                    request_id: "req-1".to_string(),
+                    trace_id: "trace-1".to_string(),
+                },
+                payload: method_library_contracts::DefinitionEventPayload::ContentPublished(
+                    method_library_contracts::ContentPublishedPayload {
+                        gate_ref: ApprovedGateRef {
+                            gate_id: "gate-1".to_string(),
+                            gate_decision_id: "decision-1".to_string(),
+                            approved_at: datetime!(2026-05-26 08:05:00 UTC),
+                        },
+                        version: ContentVersion::new("1.0.0").expect("version should be valid"),
+                        fingerprint: CanonicalFingerprint::new(
+                            FingerprintAlgorithm::Sha256,
+                            "abc123",
+                            "1.0",
+                        )
+                        .expect("fingerprint should be valid"),
+                    },
+                ),
+            },
+            format!("payload-hash-{event_id}"),
+            idempotency_key.map(ToString::to_string),
+        )
+        .expect("outbox event should be valid")
     }
 
     #[tokio::test]
@@ -1740,7 +1960,7 @@ mod tests {
                     .expect("fingerprint should be valid"),
                 },
                 snapshot_ref: None,
-                trace: method_library_contracts::EventTraceContext {
+                trace: EventTraceContext {
                     request_id: "req-1".to_string(),
                     trace_id: "trace-1".to_string(),
                 },
@@ -1803,6 +2023,170 @@ mod tests {
             )
             .await
             .expect("publish should mark");
+    }
+
+    #[tokio::test]
+    async fn publish_service_rolls_back_when_outbox_idempotency_conflicts() {
+        let _guard = test_guard();
+        let persistence = test_db().await;
+        insert_content(
+            &persistence,
+            sample_in_review_content("content-review", "family-review"),
+            "idem-seed-review",
+        )
+        .await;
+
+        let outbox = persistence.outbox_repository();
+        let mut tx = persistence
+            .unit_of_work()
+            .begin(sample_meta_with("idem-seed-outbox", "hash-seed-outbox"))
+            .await
+            .expect("transaction should begin");
+        outbox
+            .append(
+                &mut tx,
+                sample_outbox_event("evt-existing", "content-existing", Some("idem-publish")),
+            )
+            .await
+            .expect("seed event should append");
+        tx.commit().await.expect("commit should succeed");
+
+        let service = command_service(&persistence);
+        let error = service
+            .publish(
+                sample_publish_command("content-review", 2),
+                sample_actor(),
+                sample_meta_with("idem-publish", "hash-publish"),
+            )
+            .await
+            .expect_err("publish should roll back on outbox idempotency conflict");
+        assert_eq!(error.code, MethodLibraryErrorCode::IdempotencyConflict);
+
+        let repository = persistence.method_content_repository();
+        let mut read_tx = persistence
+            .unit_of_work()
+            .begin(sample_meta_with("idem-read", "hash-read"))
+            .await
+            .expect("transaction should begin");
+        let content = repository
+            .get_for_update(&mut read_tx, "content-review".to_string())
+            .await
+            .expect("content query should succeed")
+            .expect("content should exist");
+        assert_eq!(content.lifecycle.state, LifecycleState::InReview);
+        assert!(content.version.is_none());
+        assert!(content.fingerprint.is_none());
+        read_tx.rollback().await.expect("rollback should succeed");
+
+        let version_count: i64 = sqlx::query_scalar(&format!(
+            "select count(*) from {METHOD_CONTENT_VERSIONS_TABLE} where content_id = $1"
+        ))
+        .bind("content-review")
+        .fetch_one(&persistence.state.pool)
+        .await
+        .expect("version count should query");
+        assert_eq!(version_count, 0);
+
+        let snapshot_count: i64 = sqlx::query_scalar(&format!(
+            "select count(*) from {SNAPSHOT_TABLE} where content_id = $1"
+        ))
+        .bind("content-review")
+        .fetch_one(&persistence.state.pool)
+        .await
+        .expect("snapshot count should query");
+        assert_eq!(snapshot_count, 0);
+    }
+
+    #[tokio::test]
+    async fn supersede_service_rolls_back_when_link_conflicts() {
+        let _guard = test_guard();
+        let persistence = test_db().await;
+        insert_content(
+            &persistence,
+            sample_published_content("content-old", "family-shared"),
+            "idem-seed-old",
+        )
+        .await;
+        insert_content(
+            &persistence,
+            sample_in_review_content("content-new", "family-new"),
+            "idem-seed-new",
+        )
+        .await;
+
+        let links = persistence.supersede_link_repository();
+        let mut tx = persistence
+            .unit_of_work()
+            .begin(sample_meta_with("idem-seed-link", "hash-seed-link"))
+            .await
+            .expect("transaction should begin");
+        links
+            .insert(
+                &mut tx,
+                SupersedeLink {
+                    supersede_link_id: "supersede-existing".to_string(),
+                    old_content_id: "content-old".to_string(),
+                    new_content_id: "content-other".to_string(),
+                    content_family_id: "family-shared".to_string(),
+                    reason: "Existing replacement".to_string(),
+                    created_at: datetime!(2026-05-26 08:12:00 UTC),
+                },
+            )
+            .await
+            .expect("seed link should insert");
+        tx.commit().await.expect("commit should succeed");
+
+        let service = command_service(&persistence);
+        let error = service
+            .supersede(
+                sample_supersede_command("content-old", 3, "content-new", 2),
+                sample_actor(),
+                sample_meta_with("idem-supersede", "hash-supersede"),
+            )
+            .await
+            .expect_err("supersede should roll back on conflicting link");
+        assert_eq!(error.code, MethodLibraryErrorCode::SupersedeConflict);
+
+        let repository = persistence.method_content_repository();
+        let mut read_tx = persistence
+            .unit_of_work()
+            .begin(sample_meta_with("idem-read-2", "hash-read-2"))
+            .await
+            .expect("transaction should begin");
+        let old_content = repository
+            .get_for_update(&mut read_tx, "content-old".to_string())
+            .await
+            .expect("old query should succeed")
+            .expect("old content should exist");
+        let new_content = repository
+            .get_for_update(&mut read_tx, "content-new".to_string())
+            .await
+            .expect("new query should succeed")
+            .expect("new content should exist");
+        assert_eq!(old_content.lifecycle.state, LifecycleState::Published);
+        assert!(old_content.superseded_by_content_id.is_none());
+        assert_eq!(new_content.lifecycle.state, LifecycleState::InReview);
+        assert_eq!(new_content.content_family_id, "family-new");
+        assert!(new_content.version.is_none());
+        read_tx.rollback().await.expect("rollback should succeed");
+
+        let version_count: i64 = sqlx::query_scalar(&format!(
+            "select count(*) from {METHOD_CONTENT_VERSIONS_TABLE} where content_id = $1"
+        ))
+        .bind("content-new")
+        .fetch_one(&persistence.state.pool)
+        .await
+        .expect("version count should query");
+        assert_eq!(version_count, 0);
+
+        let snapshot_count: i64 = sqlx::query_scalar(&format!(
+            "select count(*) from {SNAPSHOT_TABLE} where content_id = $1"
+        ))
+        .bind("content-new")
+        .fetch_one(&persistence.state.pool)
+        .await
+        .expect("snapshot count should query");
+        assert_eq!(snapshot_count, 0);
     }
 
     #[tokio::test]
