@@ -51,6 +51,7 @@ pub struct ProjectionCheckpointView {
     /// Last processed event identifier.
     pub last_processed_event_id: Option<OutboxEventId>,
     /// Last update timestamp.
+    #[serde(with = "time::serde::rfc3339")]
     pub updated_at: Timestamp,
 }
 

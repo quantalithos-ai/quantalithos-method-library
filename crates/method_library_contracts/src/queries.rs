@@ -118,6 +118,7 @@ pub struct ContentSummaryView {
     /// Optional published version.
     pub version: Option<ContentVersion>,
     /// Last update time.
+    #[serde(with = "time::serde::rfc3339")]
     pub updated_at: Timestamp,
 }
 
@@ -135,6 +136,7 @@ pub struct ContentVersionView {
     /// Optional snapshot reference.
     pub snapshot_ref: Option<crate::snapshots::SnapshotRef>,
     /// Publish timestamp.
+    #[serde(with = "time::serde::rfc3339")]
     pub published_at: Timestamp,
 }
 
@@ -150,6 +152,7 @@ pub struct LifecycleHistoryEntryView {
     /// Optional reason.
     pub reason: Option<String>,
     /// Creation timestamp.
+    #[serde(with = "time::serde::rfc3339")]
     pub created_at: Timestamp,
 }
 
@@ -167,6 +170,7 @@ pub struct AuditRecordView {
     /// Result label.
     pub result: String,
     /// Occurrence timestamp.
+    #[serde(with = "time::serde::rfc3339")]
     pub occurred_at: Timestamp,
 }
 
@@ -178,6 +182,7 @@ pub struct OutboxEventView {
     /// Event type.
     pub event_type: crate::events::DefinitionEventType,
     /// Event occurrence timestamp.
+    #[serde(with = "time::serde::rfc3339")]
     pub occurred_at: Timestamp,
     /// Optional snapshot reference.
     pub snapshot_ref: Option<crate::snapshots::SnapshotRef>,
@@ -193,6 +198,7 @@ pub struct SupersedeLinkView {
     /// Supersede reason.
     pub reason: String,
     /// Creation timestamp.
+    #[serde(with = "time::serde::rfc3339")]
     pub created_at: Timestamp,
 }
 

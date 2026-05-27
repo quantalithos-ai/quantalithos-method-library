@@ -39,6 +39,7 @@ pub struct ApprovedGateRef {
     /// Gate decision identifier.
     pub gate_decision_id: String,
     /// Approval timestamp.
+    #[serde(with = "time::serde::rfc3339")]
     pub approved_at: Timestamp,
 }
 

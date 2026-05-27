@@ -32,6 +32,7 @@ pub struct SnapshotPayload {
     /// Frozen published references.
     pub references: Vec<PublishedContentRef>,
     /// Payload generation timestamp.
+    #[serde(with = "time::serde::rfc3339")]
     pub generated_at: Timestamp,
     /// Payload schema version.
     pub schema_version: SnapshotSchemaVersion,
@@ -53,6 +54,7 @@ pub struct DefinitionSnapshot {
     /// Blob reference in object storage.
     pub blob_ref: SnapshotBlobRef,
     /// Creation timestamp.
+    #[serde(with = "time::serde::rfc3339")]
     pub created_at: Timestamp,
     /// Frozen content reference.
     pub content_ref: PublishedContentRef,

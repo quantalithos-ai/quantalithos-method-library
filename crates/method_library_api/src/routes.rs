@@ -3,27 +3,34 @@
 use std::sync::Arc;
 
 use axum::Router;
-use axum::extract::{Json, OriginalUri, Path, State};
+use axum::extract::{Json, Path, State};
 use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, patch, post};
 use method_library_application::MethodContentCommandService;
 use method_library_application::ports::Clock;
 use method_library_application::ports::fakes::{
-    DeterministicClock, DeterministicIdGenerator, FakeUnitOfWork, InMemoryAuditRepository,
-    InMemoryIdempotencyRepository, InMemoryLifecycleHistoryRepository,
-    InMemoryMethodContentReferenceRepository, InMemoryMethodContentRepository,
+    DeterministicClock, DeterministicFingerprintHasher, DeterministicIdGenerator, FakeUnitOfWork,
+    InMemoryAuditRepository, InMemoryDefinitionSnapshotRepository, InMemoryIdempotencyRepository,
+    InMemoryLifecycleHistoryRepository, InMemoryMethodContentReferenceRepository,
+    InMemoryMethodContentRepository, InMemoryMethodContentVersionRepository, InMemoryObjectStorage,
+    InMemoryOutboxRepository, StaticGovernancePort,
 };
 use method_library_contracts::{
     CreateMethodContentDraftCommand, CreateMethodContentDraftResponse, ErrorResponse,
-    PlaceholderContract, SubmitMethodContentForReviewCommand, SubmitMethodContentForReviewResponse,
+    PlaceholderContract, PublishMethodContentCommand, PublishMethodContentResponse,
+    SubmitMethodContentForReviewCommand, SubmitMethodContentForReviewResponse,
     UpdateMethodContentDraftCommand, UpdateMethodContentDraftResponse,
 };
 use method_library_domain::{MethodLibraryError, MethodLibraryErrorCode};
-use serde::Serialize;
+use serde::{Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
 use time::macros::datetime;
+use tracing::{error, info, warn};
 
 use crate::extractors::GatewayContextExtractor;
+
+const API_BASE_PATH: &str = "/api/v1/method-library";
 
 /// Shared application state used by the HTTP router.
 #[derive(Clone)]
@@ -51,9 +58,18 @@ impl AppState {
             Arc::new(FakeUnitOfWork),
             Arc::new(InMemoryMethodContentRepository::default()),
             Arc::new(InMemoryMethodContentReferenceRepository::default()),
+            Arc::new(InMemoryMethodContentVersionRepository::default()),
+            Arc::new(InMemoryDefinitionSnapshotRepository::default()),
+            Arc::new(InMemoryOutboxRepository::default()),
             Arc::new(InMemoryLifecycleHistoryRepository::default()),
             Arc::new(InMemoryAuditRepository::default()),
             Arc::new(InMemoryIdempotencyRepository::default()),
+            Arc::new(StaticGovernancePort::new(
+                true,
+                datetime!(2026-05-26 08:00:00 UTC),
+            )),
+            Arc::new(InMemoryObjectStorage::default()),
+            Arc::new(DeterministicFingerprintHasher::default()),
             clock.clone(),
             Arc::new(DeterministicIdGenerator::default()),
         ));
@@ -76,13 +92,20 @@ pub fn router() -> Router {
 #[must_use]
 pub fn router_with_state(state: AppState) -> Router {
     Router::new()
-        .route("/healthz", get(healthcheck))
-        .route("/contents", post(create_method_content_draft))
-        .route(
-            "/contents/{content_id}/draft",
-            patch(update_method_content_draft),
+        .nest(
+            API_BASE_PATH,
+            Router::new()
+                .route("/healthz", get(healthcheck))
+                .route("/contents", post(create_method_content_draft))
+                .route(
+                    "/contents/{content_id}/draft",
+                    patch(update_method_content_draft),
+                )
+                .route(
+                    "/contents/{content_action}",
+                    post(dispatch_method_content_action),
+                ),
         )
-        .fallback(submit_method_content_for_review)
         .with_state(state)
 }
 
@@ -96,17 +119,36 @@ async fn create_method_content_draft(
     Json(command): Json<CreateMethodContentDraftCommand>,
 ) -> Result<(StatusCode, Json<CreateMethodContentDraftResponse>), (StatusCode, Json<ErrorResponse>)>
 {
+    log_api_request(&gateway, "create_draft", "POST", "/contents", None);
     let request_hash = canonical_request_hash(&command).map_err(|error| {
+        log_api_error(
+            &gateway,
+            "create_draft",
+            "POST",
+            "/contents",
+            StatusCode::INTERNAL_SERVER_ERROR,
+            None,
+            &error,
+        );
         error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
-            String::new(),
-            String::new(),
+            gateway.headers.request_id.clone(),
+            gateway.headers.trace_id.clone(),
             error,
         )
     })?;
     let meta = gateway
         .request_meta(request_hash, state.received_at())
         .map_err(|error| {
+            log_api_error(
+                &gateway,
+                "create_draft",
+                "POST",
+                "/contents",
+                StatusCode::BAD_REQUEST,
+                None,
+                &error,
+            );
             error_response(
                 StatusCode::BAD_REQUEST,
                 gateway.headers.request_id.clone(),
@@ -115,18 +157,40 @@ async fn create_method_content_draft(
             )
         })?;
 
-    state
+    match state
         .command_service
         .create_draft(command, gateway.actor.clone(), meta)
         .await
-        .map(|response| (StatusCode::CREATED, Json(response)))
-        .map_err(|error| {
-            map_error_response(
+    {
+        Ok(response) => {
+            log_api_success(
+                &gateway,
+                "create_draft",
+                "POST",
+                "/contents",
+                StatusCode::CREATED,
+                Some(&response.content_id),
+            );
+            Ok((StatusCode::CREATED, Json(response)))
+        }
+        Err(error) => {
+            let mapped = map_error_response(
                 gateway.headers.request_id.clone(),
                 gateway.headers.trace_id.clone(),
-                error,
-            )
-        })
+                error.clone(),
+            );
+            log_api_error(
+                &gateway,
+                "create_draft",
+                "POST",
+                "/contents",
+                mapped.0,
+                None,
+                &error,
+            );
+            Err(mapped)
+        }
+    }
 }
 
 async fn update_method_content_draft(
@@ -136,7 +200,24 @@ async fn update_method_content_draft(
     Json(command): Json<UpdateMethodContentDraftCommand>,
 ) -> Result<(StatusCode, Json<UpdateMethodContentDraftResponse>), (StatusCode, Json<ErrorResponse>)>
 {
+    let target_content_id = command.content_id.clone();
+    log_api_request(
+        &gateway,
+        "update_draft",
+        "PATCH",
+        "/contents/{content_id}/draft",
+        Some(&target_content_id),
+    );
     validate_path_content_id(&path_content_id, &command.content_id).map_err(|error| {
+        log_api_error(
+            &gateway,
+            "update_draft",
+            "PATCH",
+            "/contents/{content_id}/draft",
+            StatusCode::BAD_REQUEST,
+            Some(&target_content_id),
+            &error,
+        );
         error_response(
             StatusCode::BAD_REQUEST,
             gateway.headers.request_id.clone(),
@@ -145,6 +226,15 @@ async fn update_method_content_draft(
         )
     })?;
     let request_hash = canonical_request_hash(&command).map_err(|error| {
+        log_api_error(
+            &gateway,
+            "update_draft",
+            "PATCH",
+            "/contents/{content_id}/draft",
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Some(&target_content_id),
+            &error,
+        );
         error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
             gateway.headers.request_id.clone(),
@@ -155,6 +245,15 @@ async fn update_method_content_draft(
     let meta = gateway
         .request_meta(request_hash, state.received_at())
         .map_err(|error| {
+            log_api_error(
+                &gateway,
+                "update_draft",
+                "PATCH",
+                "/contents/{content_id}/draft",
+                StatusCode::BAD_REQUEST,
+                Some(&target_content_id),
+                &error,
+            );
             error_response(
                 StatusCode::BAD_REQUEST,
                 gateway.headers.request_id.clone(),
@@ -163,46 +262,115 @@ async fn update_method_content_draft(
             )
         })?;
 
-    state
+    match state
         .command_service
         .update_draft(command, gateway.actor.clone(), meta)
         .await
-        .map(|response| (StatusCode::OK, Json(response)))
-        .map_err(|error| {
-            map_error_response(
+    {
+        Ok(response) => {
+            log_api_success(
+                &gateway,
+                "update_draft",
+                "PATCH",
+                "/contents/{content_id}/draft",
+                StatusCode::OK,
+                Some(&response.content_id),
+            );
+            Ok((StatusCode::OK, Json(response)))
+        }
+        Err(error) => {
+            let mapped = map_error_response(
+                gateway.headers.request_id.clone(),
+                gateway.headers.trace_id.clone(),
+                error.clone(),
+            );
+            log_api_error(
+                &gateway,
+                "update_draft",
+                "PATCH",
+                "/contents/{content_id}/draft",
+                mapped.0,
+                Some(&target_content_id),
+                &error,
+            );
+            Err(mapped)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MethodContentAction {
+    SubmitReview,
+    Publish,
+}
+
+async fn dispatch_method_content_action(
+    State(state): State<AppState>,
+    gateway: GatewayContextExtractor,
+    Path(content_action): Path<String>,
+    Json(payload): Json<serde_json::Value>,
+) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
+    let (path_content_id, action) =
+        parse_method_content_action(&content_action).map_err(|error| {
+            error_response(
+                StatusCode::NOT_FOUND,
                 gateway.headers.request_id.clone(),
                 gateway.headers.trace_id.clone(),
                 error,
             )
-        })
+        })?;
+
+    match action {
+        MethodContentAction::SubmitReview => {
+            let command: SubmitMethodContentForReviewCommand = decode_action_command(
+                payload,
+                &gateway.headers.request_id,
+                &gateway.headers.trace_id,
+            )?;
+            submit_method_content_for_review(&state, &gateway, path_content_id, command)
+                .await
+                .map(IntoResponse::into_response)
+        }
+        MethodContentAction::Publish => {
+            let command: PublishMethodContentCommand = decode_action_command(
+                payload,
+                &gateway.headers.request_id,
+                &gateway.headers.trace_id,
+            )?;
+            publish_method_content(&state, &gateway, path_content_id, command)
+                .await
+                .map(IntoResponse::into_response)
+        }
+    }
 }
 
 async fn submit_method_content_for_review(
-    State(state): State<AppState>,
-    gateway: GatewayContextExtractor,
-    OriginalUri(original_uri): OriginalUri,
-    Json(command): Json<SubmitMethodContentForReviewCommand>,
+    state: &AppState,
+    gateway: &GatewayContextExtractor,
+    path_content_id: &str,
+    command: SubmitMethodContentForReviewCommand,
 ) -> Result<
     (StatusCode, Json<SubmitMethodContentForReviewResponse>),
     (StatusCode, Json<ErrorResponse>),
 > {
-    let Some(path_content_id) = original_uri
-        .path()
-        .strip_prefix("/contents/")
-        .and_then(|rest| rest.split_once(':'))
-        .and_then(|(content_id, action)| (action == "submit-review").then_some(content_id))
-    else {
-        return Err(error_response(
-            StatusCode::NOT_FOUND,
-            gateway.headers.request_id.clone(),
-            gateway.headers.trace_id.clone(),
-            MethodLibraryError::validation(
-                MethodLibraryErrorCode::MethodContentNotFound,
-                "submit review route was not found",
-            ),
-        ));
-    };
-    validate_path_content_id(&path_content_id, &command.content_id).map_err(|error| {
+    let target_content_id = command.content_id.clone();
+    log_api_request(
+        gateway,
+        "submit_for_review",
+        "POST",
+        "/contents/{content_id}:submit-review",
+        Some(&target_content_id),
+    );
+    validate_path_content_id(path_content_id, &command.content_id).map_err(|error| {
+        log_api_error(
+            gateway,
+            "submit_for_review",
+            "POST",
+            "/contents/{content_id}:submit-review",
+            StatusCode::BAD_REQUEST,
+            Some(&target_content_id),
+            &error,
+        );
         error_response(
             StatusCode::BAD_REQUEST,
             gateway.headers.request_id.clone(),
@@ -211,6 +379,15 @@ async fn submit_method_content_for_review(
         )
     })?;
     let request_hash = canonical_request_hash(&command).map_err(|error| {
+        log_api_error(
+            gateway,
+            "submit_for_review",
+            "POST",
+            "/contents/{content_id}:submit-review",
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Some(&target_content_id),
+            &error,
+        );
         error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
             gateway.headers.request_id.clone(),
@@ -221,6 +398,15 @@ async fn submit_method_content_for_review(
     let meta = gateway
         .request_meta(request_hash, state.received_at())
         .map_err(|error| {
+            log_api_error(
+                gateway,
+                "submit_for_review",
+                "POST",
+                "/contents/{content_id}:submit-review",
+                StatusCode::BAD_REQUEST,
+                Some(&target_content_id),
+                &error,
+            );
             error_response(
                 StatusCode::BAD_REQUEST,
                 gateway.headers.request_id.clone(),
@@ -229,18 +415,144 @@ async fn submit_method_content_for_review(
             )
         })?;
 
-    state
+    match state
         .command_service
         .submit_for_review(command, gateway.actor.clone(), meta)
         .await
-        .map(|response| (StatusCode::OK, Json(response)))
+    {
+        Ok(response) => {
+            log_api_success(
+                gateway,
+                "submit_for_review",
+                "POST",
+                "/contents/{content_id}:submit-review",
+                StatusCode::OK,
+                Some(&response.content_id),
+            );
+            Ok((StatusCode::OK, Json(response)))
+        }
+        Err(error) => {
+            let mapped = map_error_response(
+                gateway.headers.request_id.clone(),
+                gateway.headers.trace_id.clone(),
+                error.clone(),
+            );
+            log_api_error(
+                gateway,
+                "submit_for_review",
+                "POST",
+                "/contents/{content_id}:submit-review",
+                mapped.0,
+                Some(&target_content_id),
+                &error,
+            );
+            Err(mapped)
+        }
+    }
+}
+
+async fn publish_method_content(
+    state: &AppState,
+    gateway: &GatewayContextExtractor,
+    path_content_id: &str,
+    command: PublishMethodContentCommand,
+) -> Result<(StatusCode, Json<PublishMethodContentResponse>), (StatusCode, Json<ErrorResponse>)> {
+    let target_content_id = command.content_id.clone();
+    log_api_request(
+        gateway,
+        "publish",
+        "POST",
+        "/contents/{content_id}:publish",
+        Some(&target_content_id),
+    );
+    validate_path_content_id(path_content_id, &command.content_id).map_err(|error| {
+        log_api_error(
+            gateway,
+            "publish",
+            "POST",
+            "/contents/{content_id}:publish",
+            StatusCode::BAD_REQUEST,
+            Some(&target_content_id),
+            &error,
+        );
+        error_response(
+            StatusCode::BAD_REQUEST,
+            gateway.headers.request_id.clone(),
+            gateway.headers.trace_id.clone(),
+            error,
+        )
+    })?;
+    let request_hash = canonical_request_hash(&command).map_err(|error| {
+        log_api_error(
+            gateway,
+            "publish",
+            "POST",
+            "/contents/{content_id}:publish",
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Some(&target_content_id),
+            &error,
+        );
+        error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            gateway.headers.request_id.clone(),
+            gateway.headers.trace_id.clone(),
+            error,
+        )
+    })?;
+    let meta = gateway
+        .request_meta(request_hash, state.received_at())
         .map_err(|error| {
-            map_error_response(
+            log_api_error(
+                gateway,
+                "publish",
+                "POST",
+                "/contents/{content_id}:publish",
+                StatusCode::BAD_REQUEST,
+                Some(&target_content_id),
+                &error,
+            );
+            error_response(
+                StatusCode::BAD_REQUEST,
                 gateway.headers.request_id.clone(),
                 gateway.headers.trace_id.clone(),
                 error,
             )
-        })
+        })?;
+
+    match state
+        .command_service
+        .publish(command, gateway.actor.clone(), meta)
+        .await
+    {
+        Ok(response) => {
+            log_api_success(
+                gateway,
+                "publish",
+                "POST",
+                "/contents/{content_id}:publish",
+                StatusCode::OK,
+                Some(&response.content_id),
+            );
+            Ok((StatusCode::OK, Json(response)))
+        }
+        Err(error) => {
+            let mapped = map_error_response(
+                gateway.headers.request_id.clone(),
+                gateway.headers.trace_id.clone(),
+                error.clone(),
+            );
+            log_api_error(
+                gateway,
+                "publish",
+                "POST",
+                "/contents/{content_id}:publish",
+                mapped.0,
+                Some(&target_content_id),
+                &error,
+            );
+            Err(mapped)
+        }
+    }
 }
 
 fn canonical_request_hash(command: &impl Serialize) -> Result<String, MethodLibraryError> {
@@ -251,6 +563,55 @@ fn canonical_request_hash(command: &impl Serialize) -> Result<String, MethodLibr
         )
     })?;
     Ok(format!("{:x}", Sha256::digest(canonical.as_bytes())))
+}
+
+fn decode_action_command<T: DeserializeOwned>(
+    payload: serde_json::Value,
+    request_id: &str,
+    trace_id: &str,
+) -> Result<T, (StatusCode, Json<ErrorResponse>)> {
+    serde_json::from_value(payload).map_err(|error| {
+        error_response(
+            StatusCode::BAD_REQUEST,
+            request_id.to_string(),
+            trace_id.to_string(),
+            MethodLibraryError::validation(
+                MethodLibraryErrorCode::BoundaryViolation,
+                format!("invalid action request body: {error}"),
+            ),
+        )
+    })
+}
+
+fn parse_method_content_action(
+    content_action: &str,
+) -> Result<(&str, MethodContentAction), MethodLibraryError> {
+    let Some((content_id, action)) = content_action.rsplit_once(':') else {
+        return Err(MethodLibraryError::validation(
+            MethodLibraryErrorCode::BoundaryViolation,
+            "unsupported content action path",
+        ));
+    };
+
+    if content_id.trim().is_empty() {
+        return Err(MethodLibraryError::validation(
+            MethodLibraryErrorCode::BoundaryViolation,
+            "content action path must include a content id",
+        ));
+    }
+
+    let action = match action {
+        "submit-review" => MethodContentAction::SubmitReview,
+        "publish" => MethodContentAction::Publish,
+        _ => {
+            return Err(MethodLibraryError::validation(
+                MethodLibraryErrorCode::BoundaryViolation,
+                "unsupported content action path",
+            ));
+        }
+    };
+
+    Ok((content_id, action))
 }
 
 fn error_response(
@@ -279,19 +640,117 @@ fn map_error_response(
         | MethodLibraryErrorCode::PathBodyMismatch => StatusCode::BAD_REQUEST,
         MethodLibraryErrorCode::BoundaryViolation
         | MethodLibraryErrorCode::ReferenceInvalid
-        | MethodLibraryErrorCode::PayloadKindMismatch => StatusCode::UNPROCESSABLE_ENTITY,
+        | MethodLibraryErrorCode::PayloadKindMismatch
+        | MethodLibraryErrorCode::ReferenceNotPublished => StatusCode::UNPROCESSABLE_ENTITY,
+        MethodLibraryErrorCode::PublishGateRequired
+        | MethodLibraryErrorCode::PublishGateInvalid => StatusCode::FAILED_DEPENDENCY,
         MethodLibraryErrorCode::IdempotencyConflict
         | MethodLibraryErrorCode::IdempotencyStatusConflict
         | MethodLibraryErrorCode::LifecycleTransitionNotAllowed
         | MethodLibraryErrorCode::PublishedContentImmutable => StatusCode::CONFLICT,
         MethodLibraryErrorCode::MethodContentNotFound => StatusCode::NOT_FOUND,
         MethodLibraryErrorCode::RevisionConflict => StatusCode::PRECONDITION_FAILED,
-        MethodLibraryErrorCode::PersistenceUnavailable
+        MethodLibraryErrorCode::GovernanceUnavailable
+        | MethodLibraryErrorCode::ObjectStorageUnavailable
+        | MethodLibraryErrorCode::PersistenceUnavailable
         | MethodLibraryErrorCode::TransactionCommitFailed => StatusCode::SERVICE_UNAVAILABLE,
         _ => StatusCode::INTERNAL_SERVER_ERROR,
     };
 
     error_response(status, request_id, trace_id, error)
+}
+
+fn log_api_request(
+    gateway: &GatewayContextExtractor,
+    operation: &str,
+    method: &str,
+    path_template: &str,
+    target_content_id: Option<&str>,
+) {
+    info!(
+        request_id = %gateway.headers.request_id,
+        trace_id = %gateway.headers.trace_id,
+        operation,
+        method,
+        path_template,
+        actor_id = %gateway.actor.actor_id,
+        actor_kind = ?gateway.actor.actor_kind,
+        idempotency_key_present = gateway.headers.idempotency_key.is_some(),
+        target_content_id = target_content_id.unwrap_or(""),
+        "received api request"
+    );
+}
+
+fn log_api_success(
+    gateway: &GatewayContextExtractor,
+    operation: &str,
+    method: &str,
+    path_template: &str,
+    status: StatusCode,
+    target_content_id: Option<&str>,
+) {
+    info!(
+        request_id = %gateway.headers.request_id,
+        trace_id = %gateway.headers.trace_id,
+        operation,
+        method,
+        path_template,
+        status = status.as_u16(),
+        target_content_id = target_content_id.unwrap_or(""),
+        "completed api request"
+    );
+}
+
+fn log_api_error(
+    gateway: &GatewayContextExtractor,
+    operation: &str,
+    method: &str,
+    path_template: &str,
+    status: StatusCode,
+    target_content_id: Option<&str>,
+    error_value: &MethodLibraryError,
+) {
+    let dependency = dependency_for_error(error_value.code).unwrap_or("");
+    if status.is_server_error() {
+        error!(
+            request_id = %gateway.headers.request_id,
+            trace_id = %gateway.headers.trace_id,
+            operation,
+            method,
+            path_template,
+            status = status.as_u16(),
+            target_content_id = target_content_id.unwrap_or(""),
+            error_code = error_value.code.as_str(),
+            retryable = error_value.retryable,
+            dependency,
+            "api request failed"
+        );
+    } else {
+        warn!(
+            request_id = %gateway.headers.request_id,
+            trace_id = %gateway.headers.trace_id,
+            operation,
+            method,
+            path_template,
+            status = status.as_u16(),
+            target_content_id = target_content_id.unwrap_or(""),
+            error_code = error_value.code.as_str(),
+            retryable = error_value.retryable,
+            dependency,
+            "api request failed"
+        );
+    }
+}
+
+fn dependency_for_error(error_code: MethodLibraryErrorCode) -> Option<&'static str> {
+    match error_code {
+        MethodLibraryErrorCode::PublishGateInvalid
+        | MethodLibraryErrorCode::GovernanceUnavailable => Some("governance"),
+        MethodLibraryErrorCode::ObjectStorageUnavailable => Some("object_storage"),
+        MethodLibraryErrorCode::PersistenceUnavailable
+        | MethodLibraryErrorCode::TransactionCommitFailed => Some("database"),
+        _ => None,
+    }
 }
 
 fn validate_path_content_id(
@@ -321,12 +780,15 @@ mod tests {
     use time::macros::datetime;
     use tower::ServiceExt;
 
-    use super::{AppState, router, router_with_state};
+    use super::{API_BASE_PATH, AppState, router, router_with_state};
     use method_library_application::ports::Clock;
     use method_library_application::ports::fakes::{
-        DeterministicClock, DeterministicIdGenerator, FakeUnitOfWork, InMemoryAuditRepository,
+        DeterministicClock, DeterministicFingerprintHasher, DeterministicIdGenerator,
+        FakeUnitOfWork, InMemoryAuditRepository, InMemoryDefinitionSnapshotRepository,
         InMemoryIdempotencyRepository, InMemoryLifecycleHistoryRepository,
         InMemoryMethodContentReferenceRepository, InMemoryMethodContentRepository,
+        InMemoryMethodContentVersionRepository, InMemoryObjectStorage, InMemoryOutboxRepository,
+        StaticGovernancePort,
     };
     use method_library_application::{
         MethodContentCommandService, MethodContentRepository, UnitOfWork,
@@ -342,22 +804,41 @@ mod tests {
     fn test_state() -> (
         AppState,
         Arc<InMemoryMethodContentRepository>,
+        Arc<InMemoryMethodContentVersionRepository>,
+        Arc<InMemoryDefinitionSnapshotRepository>,
+        Arc<InMemoryOutboxRepository>,
+        Arc<InMemoryObjectStorage>,
         Arc<InMemoryLifecycleHistoryRepository>,
     ) {
         let clock: Arc<dyn Clock> =
             Arc::new(DeterministicClock::new(datetime!(2026-05-26 08:00:00 UTC)));
         let content_repository = Arc::new(InMemoryMethodContentRepository::default());
         let reference_repository = Arc::new(InMemoryMethodContentReferenceRepository::default());
+        let version_repository = Arc::new(InMemoryMethodContentVersionRepository::default());
+        let snapshot_repository = Arc::new(InMemoryDefinitionSnapshotRepository::default());
+        let outbox_repository = Arc::new(InMemoryOutboxRepository::default());
+        let object_storage = Arc::new(InMemoryObjectStorage::default());
         let lifecycle_history_repository = Arc::new(InMemoryLifecycleHistoryRepository::default());
         let audit_repository = Arc::new(InMemoryAuditRepository::default());
         let idempotency_repository = Arc::new(InMemoryIdempotencyRepository::default());
+        let governance_port = Arc::new(StaticGovernancePort::new(
+            true,
+            datetime!(2026-05-26 08:00:00 UTC),
+        ));
+        let fingerprint_hasher = Arc::new(DeterministicFingerprintHasher::default());
         let command_service = Arc::new(MethodContentCommandService::new(
             Arc::new(FakeUnitOfWork),
             content_repository.clone(),
             reference_repository,
+            version_repository.clone(),
+            snapshot_repository.clone(),
+            outbox_repository.clone(),
             lifecycle_history_repository.clone(),
             audit_repository,
             idempotency_repository,
+            governance_port,
+            object_storage.clone(),
+            fingerprint_hasher,
             clock.clone(),
             Arc::new(DeterministicIdGenerator::default()),
         ));
@@ -365,6 +846,10 @@ mod tests {
         (
             AppState::new(clock, command_service),
             content_repository,
+            version_repository,
+            snapshot_repository,
+            outbox_repository,
+            object_storage,
             lifecycle_history_repository,
         )
     }
@@ -383,12 +868,35 @@ mod tests {
         })
     }
 
+    fn sample_publish_body(
+        content_id: &str,
+        expected_revision: i64,
+        gate_id: &str,
+        gate_decision_id: &str,
+    ) -> serde_json::Value {
+        serde_json::json!({
+            "content_id": content_id,
+            "expected_revision": expected_revision,
+            "version": "1.0.0",
+            "approved_gate_ref": {
+                "gate_id": gate_id,
+                "gate_decision_id": gate_decision_id,
+                "approved_at": "2026-05-26T08:10:00Z"
+            },
+            "publish_reason": "Initial release"
+        })
+    }
+
+    fn api_path(path: &str) -> String {
+        format!("{API_BASE_PATH}{path}")
+    }
+
     #[tokio::test]
     async fn responds_to_healthcheck() {
         let response = router()
             .oneshot(
                 Request::builder()
-                    .uri("/healthz")
+                    .uri(api_path("/healthz"))
                     .body(Body::empty())
                     .expect("request should build"),
             )
@@ -402,7 +910,7 @@ mod tests {
     async fn creates_draft_via_http() {
         let request = Request::builder()
             .method("POST")
-            .uri("/contents")
+            .uri(api_path("/contents"))
             .header("content-type", "application/json")
             .header("x-request-id", "req-1")
             .header("x-trace-id", "trace-1")
@@ -463,7 +971,7 @@ mod tests {
             .clone()
             .oneshot(build_gateway_request(
                 "POST",
-                "/contents",
+                api_path("/contents"),
                 Some("idem-1"),
                 serde_json::json!({
                     "kind": "qualification",
@@ -506,7 +1014,7 @@ mod tests {
         let update_response = app
             .oneshot(build_gateway_request(
                 "PATCH",
-                "/contents/content-1/draft",
+                api_path("/contents/content-1/draft"),
                 Some("idem-2"),
                 serde_json::json!({
                     "content_id": "content-1",
@@ -555,7 +1063,7 @@ mod tests {
             .clone()
             .oneshot(build_gateway_request(
                 "POST",
-                "/contents",
+                api_path("/contents"),
                 Some("idem-1"),
                 serde_json::json!({
                     "kind": "qualification",
@@ -598,7 +1106,7 @@ mod tests {
         let submit_response = app
             .oneshot(build_gateway_request(
                 "POST",
-                "/contents/content-1:submit-review",
+                api_path("/contents/content-1:submit-review"),
                 Some("idem-2"),
                 sample_submit_body("content-1", 1),
             ))
@@ -609,11 +1117,271 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn publishes_draft_via_http() {
+        let (state, content_repository, _, _, _, _, _) = test_state();
+        seed_published_content(&content_repository, "content-ref-1").await;
+        let app = router_with_state(state);
+
+        let create_response = app
+            .clone()
+            .oneshot(build_gateway_request(
+                "POST",
+                api_path("/contents"),
+                Some("idem-1"),
+                serde_json::json!({
+                    "kind": "qualification",
+                    "name": "Quality",
+                    "description": null,
+                    "payload": {
+                        "qualification": {
+                            "qualification_key": "quality-1",
+                            "name": "Quality",
+                            "description": null,
+                            "level_model": {
+                                "levels": [
+                                    {
+                                        "level_key": "basic",
+                                        "name": "Basic",
+                                        "order": 1,
+                                        "description": null
+                                    }
+                                ],
+                                "default_level_key": "basic"
+                            },
+                            "evidence_rules": [
+                                {
+                                    "evidence_kind": "document",
+                                    "required": true,
+                                    "description": "Proof"
+                                }
+                            ]
+                        }
+                    },
+                    "references": [
+                        {
+                            "target_content_id": "content-ref-1",
+                            "target_kind": "qualification",
+                            "required_state": "published"
+                        }
+                    ],
+                    "source_refs": []
+                }),
+            ))
+            .await
+            .expect("create route should respond");
+        assert_eq!(create_response.status(), StatusCode::CREATED);
+
+        let submit_response = app
+            .clone()
+            .oneshot(build_gateway_request(
+                "POST",
+                api_path("/contents/content-1:submit-review"),
+                Some("idem-2"),
+                sample_submit_body("content-1", 1),
+            ))
+            .await
+            .expect("submit route should respond");
+        assert_eq!(submit_response.status(), StatusCode::OK);
+
+        let publish_response = app
+            .oneshot(build_gateway_request(
+                "POST",
+                api_path("/contents/content-1:publish"),
+                Some("idem-3"),
+                sample_publish_body("content-1", 2, "gate-1", "decision-1"),
+            ))
+            .await
+            .expect("publish route should respond");
+
+        assert_eq!(publish_response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn rejects_publish_without_gate_via_http() {
+        let (state, content_repository, _, _, _, _, _) = test_state();
+        seed_published_content(&content_repository, "content-ref-1").await;
+        let app = router_with_state(state);
+
+        let create_response = app
+            .clone()
+            .oneshot(build_gateway_request(
+                "POST",
+                api_path("/contents"),
+                Some("idem-1"),
+                serde_json::json!({
+                    "kind": "qualification",
+                    "name": "Quality",
+                    "description": null,
+                    "payload": {
+                        "qualification": {
+                            "qualification_key": "quality-1",
+                            "name": "Quality",
+                            "description": null,
+                            "level_model": {
+                                "levels": [
+                                    {
+                                        "level_key": "basic",
+                                        "name": "Basic",
+                                        "order": 1,
+                                        "description": null
+                                    }
+                                ],
+                                "default_level_key": "basic"
+                            },
+                            "evidence_rules": [
+                                {
+                                    "evidence_kind": "document",
+                                    "required": true,
+                                    "description": "Proof"
+                                }
+                            ]
+                        }
+                    },
+                    "references": [
+                        {
+                            "target_content_id": "content-ref-1",
+                            "target_kind": "qualification",
+                            "required_state": "published"
+                        }
+                    ],
+                    "source_refs": []
+                }),
+            ))
+            .await
+            .expect("create route should respond");
+        assert_eq!(create_response.status(), StatusCode::CREATED);
+
+        let submit_response = app
+            .clone()
+            .oneshot(build_gateway_request(
+                "POST",
+                api_path("/contents/content-1:submit-review"),
+                Some("idem-2"),
+                sample_submit_body("content-1", 1),
+            ))
+            .await
+            .expect("submit route should respond");
+        assert_eq!(submit_response.status(), StatusCode::OK);
+
+        let response = app
+            .oneshot(build_gateway_request(
+                "POST",
+                api_path("/contents/content-1:publish"),
+                Some("idem-3"),
+                serde_json::json!({
+                    "content_id": "content-1",
+                    "expected_revision": 2,
+                    "version": "1.0.0",
+                    "approved_gate_ref": {
+                        "gate_id": "",
+                        "gate_decision_id": "",
+                        "approved_at": "2026-05-26T08:10:00Z"
+                    },
+                    "publish_reason": "Initial release"
+                }),
+            ))
+            .await
+            .expect("publish route should respond");
+
+        assert_error_code(
+            response,
+            StatusCode::FAILED_DEPENDENCY,
+            MethodLibraryErrorCode::PublishGateRequired,
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn rejects_publish_with_unpublished_reference_via_http() {
+        let (state, content_repository, _, _, _, _, _) = test_state();
+        seed_draft_content(&content_repository, "content-ref-1").await;
+        let app = router_with_state(state);
+
+        let create_response = app
+            .clone()
+            .oneshot(build_gateway_request(
+                "POST",
+                api_path("/contents"),
+                Some("idem-1"),
+                serde_json::json!({
+                    "kind": "qualification",
+                    "name": "Quality",
+                    "description": null,
+                    "payload": {
+                        "qualification": {
+                            "qualification_key": "quality-1",
+                            "name": "Quality",
+                            "description": null,
+                            "level_model": {
+                                "levels": [
+                                    {
+                                        "level_key": "basic",
+                                        "name": "Basic",
+                                        "order": 1,
+                                        "description": null
+                                    }
+                                ],
+                                "default_level_key": "basic"
+                            },
+                            "evidence_rules": [
+                                {
+                                    "evidence_kind": "document",
+                                    "required": true,
+                                    "description": "Proof"
+                                }
+                            ]
+                        }
+                    },
+                    "references": [
+                        {
+                            "target_content_id": "content-ref-1",
+                            "target_kind": "qualification",
+                            "required_state": "published"
+                        }
+                    ],
+                    "source_refs": []
+                }),
+            ))
+            .await
+            .expect("create route should respond");
+        assert_eq!(create_response.status(), StatusCode::CREATED);
+
+        let submit_response = app
+            .clone()
+            .oneshot(build_gateway_request(
+                "POST",
+                api_path("/contents/content-1:submit-review"),
+                Some("idem-2"),
+                sample_submit_body("content-1", 1),
+            ))
+            .await
+            .expect("submit route should respond");
+        assert_eq!(submit_response.status(), StatusCode::OK);
+
+        let response = app
+            .oneshot(build_gateway_request(
+                "POST",
+                api_path("/contents/content-1:publish"),
+                Some("idem-3"),
+                sample_publish_body("content-1", 2, "gate-1", "decision-1"),
+            ))
+            .await
+            .expect("publish route should respond");
+
+        assert_error_code(
+            response,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            MethodLibraryErrorCode::ReferenceNotPublished,
+        )
+        .await;
+    }
+
+    #[tokio::test]
     async fn rejects_missing_idempotency_key_via_http() {
         let response = router()
             .oneshot(build_gateway_request(
                 "POST",
-                "/contents",
+                api_path("/contents"),
                 None,
                 serde_json::json!({
                     "kind": "qualification",
@@ -667,7 +1435,7 @@ mod tests {
             .clone()
             .oneshot(build_gateway_request(
                 "POST",
-                "/contents",
+                api_path("/contents"),
                 Some("idem-1"),
                 serde_json::json!({
                     "kind": "qualification",
@@ -710,7 +1478,7 @@ mod tests {
         let response = app
             .oneshot(build_gateway_request(
                 "PATCH",
-                "/contents/content-1/draft",
+                api_path("/contents/content-1/draft"),
                 Some("idem-2"),
                 serde_json::json!({
                     "content_id": "content-2",
@@ -758,14 +1526,14 @@ mod tests {
 
     #[tokio::test]
     async fn maps_published_update_error_via_http() {
-        let (state, content_repository, _) = test_state();
-        seed_published_content(&content_repository).await;
+        let (state, content_repository, _, _, _, _, _) = test_state();
+        seed_published_content(&content_repository, "content-published").await;
         let app = router_with_state(state);
 
         let response = app
             .oneshot(build_gateway_request(
                 "PATCH",
-                "/contents/content-published/draft",
+                api_path("/contents/content-published/draft"),
                 Some("idem-2"),
                 serde_json::json!({
                     "content_id": "content-published",
@@ -813,13 +1581,13 @@ mod tests {
 
     fn build_gateway_request(
         method: &str,
-        uri: &str,
+        uri: impl AsRef<str>,
         idempotency_key: Option<&str>,
         body: serde_json::Value,
     ) -> Request<Body> {
         let mut builder = Request::builder()
             .method(method)
-            .uri(uri)
+            .uri(uri.as_ref())
             .header("content-type", "application/json")
             .header("x-request-id", "req-1")
             .header("x-trace-id", "trace-1")
@@ -848,11 +1616,14 @@ mod tests {
         assert_eq!(response.error.code, expected_code);
     }
 
-    async fn seed_published_content(repository: &Arc<InMemoryMethodContentRepository>) -> String {
+    async fn seed_published_content(
+        repository: &Arc<InMemoryMethodContentRepository>,
+        content_id: &str,
+    ) -> String {
         let actor_id = "actor-1".to_string();
         let mut content = MethodContent::create_draft(
-            "content-published".to_string(),
-            "family-published".to_string(),
+            content_id.to_string(),
+            format!("family-{content_id}"),
             MethodContentKind::Qualification,
             "Quality".to_string(),
             None,
@@ -919,6 +1690,61 @@ mod tests {
             .expect("content should insert");
         tx.commit().await.expect("transaction should commit");
 
-        "content-published".to_string()
+        content_id.to_string()
+    }
+
+    async fn seed_draft_content(
+        repository: &Arc<InMemoryMethodContentRepository>,
+        content_id: &str,
+    ) -> String {
+        let actor_id = "actor-1".to_string();
+        let content = MethodContent::create_draft(
+            content_id.to_string(),
+            format!("family-{content_id}"),
+            MethodContentKind::Qualification,
+            "Quality".to_string(),
+            None,
+            MethodContentPayload::Qualification(Qualification {
+                qualification_key: "quality-1".to_string(),
+                name: "Quality".to_string(),
+                description: None,
+                level_model: QualificationLevelModel {
+                    levels: vec![QualificationLevel {
+                        level_key: "basic".to_string(),
+                        name: "Basic".to_string(),
+                        order: 1,
+                        description: None,
+                    }],
+                    default_level_key: Some("basic".to_string()),
+                },
+                evidence_rules: vec![EvidenceRule {
+                    evidence_kind: EvidenceKind::Document,
+                    required: true,
+                    description: "Proof".to_string(),
+                }],
+            }),
+            actor_id.clone(),
+            datetime!(2026-05-26 08:00:00 UTC),
+        )
+        .expect("draft should build");
+
+        let meta = RequestMeta {
+            request_id: "req-1".to_string(),
+            trace_id: "trace-1".to_string(),
+            idempotency_key: Some("idem-seed-draft".to_string()),
+            request_hash: "hash-seed-draft".to_string(),
+            received_at: datetime!(2026-05-26 08:00:00 UTC),
+        };
+        let mut tx = FakeUnitOfWork
+            .begin(meta)
+            .await
+            .expect("transaction should open");
+        repository
+            .insert(&mut tx, content)
+            .await
+            .expect("draft content should insert");
+        tx.commit().await.expect("transaction should commit");
+
+        content_id.to_string()
     }
 }

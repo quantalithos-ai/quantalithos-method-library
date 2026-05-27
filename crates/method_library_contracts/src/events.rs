@@ -58,6 +58,7 @@ pub struct ContentDeprecatedPayload {
     /// Deprecation reason.
     pub reason: String,
     /// Effective timestamp.
+    #[serde(with = "time::serde::rfc3339")]
     pub effective_at: Timestamp,
 }
 
@@ -105,6 +106,7 @@ pub struct DefinitionEventEnvelope {
     /// Event schema version.
     pub schema_version: EventSchemaVersion,
     /// Event occurrence timestamp.
+    #[serde(with = "time::serde::rfc3339")]
     pub occurred_at: Timestamp,
     /// Producer identifier.
     pub producer: ProducerRef,

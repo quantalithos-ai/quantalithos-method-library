@@ -150,6 +150,7 @@ pub struct DeprecateMethodContentCommand {
     /// Deprecation reason.
     pub reason: String,
     /// Optional effective timestamp.
+    #[serde(with = "time::serde::rfc3339::option")]
     pub effective_at: Option<Timestamp>,
 }
 

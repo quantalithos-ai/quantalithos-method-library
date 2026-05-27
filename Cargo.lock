@@ -894,6 +894,7 @@ dependencies = [
  "method_library_domain",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
  "time",
  "tokio",

@@ -19,6 +19,7 @@ pub struct RequestMeta {
     /// Canonical request hash used by idempotency records.
     pub request_hash: RequestHash,
     /// Inbound receipt timestamp.
+    #[serde(with = "time::serde::rfc3339")]
     pub received_at: Timestamp,
 }
 

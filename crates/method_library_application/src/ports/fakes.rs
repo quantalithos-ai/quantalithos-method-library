@@ -224,10 +224,38 @@ impl RecordingBusPublisher {
     }
 }
 
+impl InMemoryObjectStorage {
+    /// Returns the stored snapshot blobs for inspection.
+    pub fn blobs(&self) -> Result<HashMap<SnapshotBlobRef, SnapshotPayload>, MethodLibraryError> {
+        Ok(lock(&self.blobs)?.clone())
+    }
+}
+
 impl InMemoryMethodContentRepository {
     /// Returns the stored contents for inspection.
     pub fn contents(&self) -> Result<HashMap<ContentId, MethodContent>, MethodLibraryError> {
         Ok(lock(&self.contents)?.clone())
+    }
+}
+
+impl InMemoryMethodContentReferenceRepository {
+    /// Returns the stored draft references for inspection.
+    pub fn draft_refs(&self) -> Result<HashMap<ContentId, Vec<ContentRef>>, MethodLibraryError> {
+        Ok(lock(&self.draft_refs)?.clone())
+    }
+
+    /// Returns the stored published references for inspection.
+    pub fn published_refs(
+        &self,
+    ) -> Result<HashMap<ContentId, Vec<PublishedContentRef>>, MethodLibraryError> {
+        Ok(lock(&self.published_refs)?.clone())
+    }
+}
+
+impl InMemoryMethodContentVersionRepository {
+    /// Returns the stored version-history records for inspection.
+    pub fn records(&self) -> Result<Vec<MethodContentVersionRecord>, MethodLibraryError> {
+        Ok(lock(&self.records)?.clone())
     }
 }
 
@@ -252,6 +280,13 @@ impl InMemoryOutboxRepository {
     /// Returns the stored outbox records for inspection.
     pub fn events(&self) -> Result<HashMap<OutboxEventId, OutboxEvent>, MethodLibraryError> {
         Ok(lock(&self.events)?.clone())
+    }
+}
+
+impl InMemoryDefinitionSnapshotRepository {
+    /// Returns the stored snapshot metadata for inspection.
+    pub fn snapshots(&self) -> Result<HashMap<SnapshotId, DefinitionSnapshot>, MethodLibraryError> {
+        Ok(lock(&self.snapshots)?.clone())
     }
 }
 

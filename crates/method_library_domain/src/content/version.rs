@@ -1,6 +1,6 @@
 //! Version value objects for published method-content definitions.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::error::{MethodLibraryError, MethodLibraryErrorCode};
 
@@ -13,7 +13,7 @@ pub enum VersionScheme {
 }
 
 /// Published business version attached to a method-content definition.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ContentVersion {
     /// Raw version string persisted for business consumers.
     pub raw: String,
@@ -50,6 +50,25 @@ impl ContentVersion {
     }
 }
 
+impl Serialize for ContentVersion {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.raw)
+    }
+}
+
+impl<'de> Deserialize<'de> for ContentVersion {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        Self::new(raw).map_err(serde::de::Error::custom)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::ContentVersion;
@@ -69,5 +88,14 @@ mod tests {
             error.code,
             crate::error::MethodLibraryErrorCode::ContentVersionConflict
         );
+    }
+
+    #[test]
+    fn serializes_as_a_string() {
+        let version = ContentVersion::new("1.2.3").expect("version should be valid");
+
+        let json = serde_json::to_string(&version).expect("version should serialize");
+
+        assert_eq!(json, "\"1.2.3\"");
     }
 }
