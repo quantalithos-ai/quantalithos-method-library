@@ -1,0 +1,15 @@
+[package]
+name = "method-library-jobs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "method_library_jobs"
+path = "src/lib.rs"
+
+[dependencies]
+method-library-application.workspace = true
+method-library-contracts.workspace = true
+method-library-infra.workspace = true

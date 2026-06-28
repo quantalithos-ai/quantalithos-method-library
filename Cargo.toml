@@ -1,0 +1,24 @@
+[workspace]
+members = [
+    "crates/contracts",
+    "crates/domain",
+    "crates/application",
+    "crates/infra",
+    "crates/api",
+    "crates/worker",
+    "crates/jobs",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "Apache-2.0"
+rust-version = "1.93"
+version = "0.1.0"
+
+[workspace.dependencies]
+core-contracts = { path = "../quantalithos-core/crates/contracts" }
+method-library-application = { path = "crates/application" }
+method-library-contracts = { path = "crates/contracts" }
+method-library-domain = { path = "crates/domain" }
+method-library-infra = { path = "crates/infra" }

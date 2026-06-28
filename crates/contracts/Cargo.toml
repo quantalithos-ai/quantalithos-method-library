@@ -1,0 +1,13 @@
+[package]
+name = "method-library-contracts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "method_library_contracts"
+path = "src/lib.rs"
+
+[dependencies]
+core-contracts.workspace = true
