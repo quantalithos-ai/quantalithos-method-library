@@ -12,7 +12,7 @@ pub mod package_set_service {}
 pub mod query_service {}
 pub mod consumer_service {}
 pub mod job_service {}
-pub mod ports {}
-pub mod unit_of_work {}
-pub mod idempotency {}
+pub mod idempotency;
+pub mod ports;
+pub mod unit_of_work;
 pub mod errors {}
