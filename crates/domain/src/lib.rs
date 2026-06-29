@@ -8,5 +8,13 @@ pub mod relation_distribution {}
 pub mod external_summary {}
 pub mod maintenance {}
 pub mod package_set {}
-pub mod policies {}
-pub mod errors {}
+pub mod errors;
+pub mod policies;
+
+pub use errors::{MethodLibraryDomainError, MethodLibraryDomainErrorKind};
+pub use policies::{
+    ConsistencyProtectionJudgement, ConsistencyProtectionPolicy, DefinitionUseBoundaryGuard,
+    DefinitionUseBoundaryGuardState, DownstreamConsumptionBoundary,
+    DownstreamConsumptionBoundaryState, ExternalBodyBoundaryRule, ExternalBodyBoundaryState,
+    RelationIntegrityJudgement, RelationIntegrityRule,
+};
