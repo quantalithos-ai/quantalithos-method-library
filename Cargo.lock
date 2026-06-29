@@ -45,6 +45,8 @@ name = "method-library-contracts"
 version = "0.1.0"
 dependencies = [
  "core-contracts",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
