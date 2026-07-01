@@ -27,7 +27,7 @@ fn sample_request_metadata() -> RequestMetadata {
 
 fn sample_boundary_ref() -> MethodLibraryTypedBoundaryRef {
     MethodLibraryTypedBoundaryRef::from_verified_source(
-        MethodLibraryTypedBoundaryRefKind::MethodAssetDefinitionRef,
+        MethodLibraryTypedBoundaryRefKind::MethodAssetDefinition,
         "ml:def:001",
     )
 }

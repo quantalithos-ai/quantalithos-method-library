@@ -17,7 +17,7 @@ fn sample_ref(
 
 fn sample_marker(value: &str) -> MethodLibrarySafeMarker {
     MethodLibrarySafeMarker::boundary(sample_ref(
-        MethodLibraryTypedBoundaryRefKind::MethodAssetDefinitionRef,
+        MethodLibraryTypedBoundaryRefKind::MethodAssetDefinition,
         value,
     ))
 }
@@ -36,7 +36,7 @@ fn sample_definition_guard() -> DefinitionUseBoundaryGuard {
             "ml:guard:1",
         )),
         Some(sample_ref(
-            MethodLibraryTypedBoundaryRefKind::MethodAssetDefinitionRef,
+            MethodLibraryTypedBoundaryRefKind::MethodAssetDefinition,
             "ml:def:1",
         )),
         Some(sample_ref(
@@ -108,11 +108,11 @@ fn sample_relation_rule() -> RelationIntegrityRule {
             "ml:relation:1",
         )),
         Some(sample_ref(
-            MethodLibraryTypedBoundaryRefKind::MethodAssetDefinitionRef,
+            MethodLibraryTypedBoundaryRefKind::MethodAssetDefinition,
             "ml:def:source",
         )),
         Some(sample_ref(
-            MethodLibraryTypedBoundaryRefKind::MethodAssetDefinitionRef,
+            MethodLibraryTypedBoundaryRefKind::MethodAssetDefinition,
             "ml:def:target",
         )),
         Some(sample_ref(
@@ -148,7 +148,7 @@ fn policy_shells_require_current_boundary_typed_carriers() {
     let definition_error = DefinitionUseBoundaryGuard::try_new(
         None,
         Some(sample_ref(
-            MethodLibraryTypedBoundaryRefKind::MethodAssetDefinitionRef,
+            MethodLibraryTypedBoundaryRefKind::MethodAssetDefinition,
             "ml:def:1",
         )),
         Some(sample_ref(
@@ -214,7 +214,7 @@ fn policy_shells_require_current_boundary_typed_carriers() {
             "ml:relation:1",
         )),
         Some(sample_ref(
-            MethodLibraryTypedBoundaryRefKind::MethodAssetDefinitionRef,
+            MethodLibraryTypedBoundaryRefKind::MethodAssetDefinition,
             "ml:def:source",
         )),
         None,

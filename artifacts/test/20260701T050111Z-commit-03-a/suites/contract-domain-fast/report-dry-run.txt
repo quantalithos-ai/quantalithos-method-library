@@ -1,0 +1,4 @@
+Dry run OK
+run_id=20260701T050111Z-commit-03-a
+artifact_root=artifacts/test/20260701T050111Z-commit-03-a
+report_root=reports/runs/20260701T050111Z-commit-03-a

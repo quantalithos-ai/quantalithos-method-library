@@ -41,7 +41,7 @@ fn capability_and_job_kind_are_stable() {
 
 #[test]
 fn typed_boundary_ref_kind_is_stable() {
-    let kind = MethodLibraryTypedBoundaryRefKind::MethodAssetDefinitionRef;
+    let kind = MethodLibraryTypedBoundaryRefKind::MethodAssetDefinition;
     let encoded = serde_json::to_string(&kind).expect("ref kind should serialize");
-    assert_eq!(encoded, "\"method_asset_definition_ref\"");
+    assert_eq!(encoded, "\"method_asset_definition\"");
 }

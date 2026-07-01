@@ -1,0 +1,31 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running unittests src/lib.rs (target/debug/deps/method_library_contracts-e91984059c5ee1cd)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/contract_foundation_roundtrip.rs (target/debug/deps/contract_foundation_roundtrip-b78246b42d5df244)
+
+running 3 tests
+test capability_and_job_kind_are_stable ... ok
+test typed_boundary_ref_kind_is_stable ... ok
+test command_query_event_job_and_view_shells_roundtrip ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/definition_catalog_contracts.rs (target/debug/deps/definition_catalog_contracts-c7d2191ecbcc9031)
+
+running 4 tests
+test applicability_summary_dedups_context_refs_in_first_seen_order ... ok
+test definition_catalog_ref_kinds_are_stable ... ok
+test ref_sets_dedup_and_preserve_first_seen_order ... ok
+test named_definition_catalog_wrappers_reject_wrong_kinds ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests method_library_contracts
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

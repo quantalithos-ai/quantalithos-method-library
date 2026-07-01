@@ -1,0 +1,37 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running unittests src/lib.rs (target/debug/deps/method_library_domain-315841717f63ca89)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/domain_foundation.rs (target/debug/deps/domain_foundation-cf84c9b4819f5ceb)
+
+running 6 tests
+test consistency_and_relation_judgements_reject_illegal_follow_up ... ok
+test downstream_boundary_adjustments_stay_within_allowed_labels ... ok
+test external_body_rule_enforces_body_free_redline_and_invariants ... ok
+test guard_state_tracks_legal_and_illegal_transitions ... ok
+test policy_shells_require_current_boundary_typed_carriers ... ok
+test rejected_guard_branch_surfaces_policy_rejected ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/method_asset_definition.rs (target/debug/deps/method_asset_definition-a46062502e6a4836)
+
+running 5 tests
+test catalog_entry_deprecation_sets_status_without_rewriting_identity ... ok
+test catalog_entry_rejects_reclassification_to_a_different_scope ... ok
+test definition_links_catalog_entries_and_source_summaries_without_duplicates ... ok
+test definition_body_free_requires_no_body_marker ... ok
+test retired_catalog_entry_rejects_deprecation ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests method_library_domain
+
+running 2 tests
+test crates/domain/src/method_asset_definition.rs - method_asset_definition::MethodAssetCatalogEntry::mark_deprecated (line 121) - compile fail ... ok
+test crates/domain/src/method_asset_definition.rs - method_asset_definition::MethodAssetCatalogEntry::mark_deprecated (line 113) - compile fail ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
