@@ -1528,4 +1528,29 @@ impl InMemoryMethodAssetFormalizationVersionRuntime {
         let mut state = self.state.lock().expect("in-memory state lock poisoned");
         state.commit_unknown_once = true;
     }
+
+    /// Removes a stored result while keeping any idempotency lookup entry intact.
+    pub fn remove_stored_result(&self, stored_result_ref: &MethodAssetStoredOperationResultRef) {
+        let mut state = self.state.lock().expect("in-memory state lock poisoned");
+        state
+            .stored_results
+            .remove(stored_result_ref.as_public_ref());
+    }
+
+    /// Corrupts the lookup digest for the stored result tied to the provided ref.
+    pub fn corrupt_stored_result_lookup_digest(
+        &self,
+        stored_result_ref: &MethodAssetStoredOperationResultRef,
+    ) {
+        let mut state = self.state.lock().expect("in-memory state lock poisoned");
+        let Some((_, entry)) = state
+            .stored_result_lookup
+            .iter_mut()
+            .find(|(_, entry)| &entry.stored_result_ref == stored_result_ref)
+        else {
+            return;
+        };
+        entry.operation_digest_ref =
+            MethodAssetOperationDigestRef::new("operation-digest:corrupted");
+    }
 }

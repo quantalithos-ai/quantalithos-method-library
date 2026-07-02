@@ -248,6 +248,75 @@ fn evaluate_replays_duplicate_without_rerunning_state_mutation() {
 }
 
 #[test]
+fn duplicate_lookup_integrity_failure_returns_conflict_surface() {
+    let runtime = InMemoryMethodAssetFormalizationVersionRuntime::new();
+    let facade = runtime.facade();
+    let support_ref_factory = runtime.support_ref_factory();
+    let (_identity_key, definition_ref, catalog_entry_ref, _scope_ref) =
+        seed_definition_and_catalog(&runtime, "integrity");
+    let basis_summary_ref =
+        seed_basis_summary(&runtime, &definition_ref, &catalog_entry_ref, "integrity");
+
+    let source = method_library_application::MethodAssetFormalizationVersionCommandSource::EvaluateFormalizationEligibility(
+        method_library_application::EvaluateFormalizationEligibilityCommandSource {
+            definition_ref: definition_ref.clone(),
+            catalog_entry_ref: catalog_entry_ref.clone(),
+            basis_summary_refs: FormalizationBasisSummaryRefSet::from_refs([
+                basis_summary_ref,
+            ]),
+            eligibility_rule_ref: method_library_contracts::FormalizationEligibilityRuleRef::new(
+                "eligibility-rule:integrity",
+            ),
+        },
+    );
+    let shell = command_shell(
+        "evaluate-integrity",
+        MethodLibraryTypedBoundaryRefKind::MethodAssetFormalizationEligibilityEvaluateIntent,
+    );
+
+    let first = facade.dispatch_formalization_version_command(
+        method_library_application::MethodAssetFormalizationVersionCommandDispatchInput {
+            command_shell: shell.clone(),
+            command_source: source.clone(),
+            api_entry_context_ref: {
+                let mut factory = support_ref_factory.lock().expect("factory lock");
+                factory.new_api_entry_context_ref()
+            },
+            application_dispatch_ref: {
+                let factory = support_ref_factory.lock().expect("factory lock");
+                factory.formalization_version_dispatch_ref()
+            },
+        },
+    );
+    assert_eq!(
+        first.result_kind,
+        method_library_application::MethodAssetStoredOperationResultKind::Accepted
+    );
+
+    runtime.remove_stored_result(&first.stored_result_ref);
+
+    let conflict = facade.dispatch_formalization_version_command(
+        method_library_application::MethodAssetFormalizationVersionCommandDispatchInput {
+            command_shell: shell,
+            command_source: source,
+            api_entry_context_ref: {
+                let mut factory = support_ref_factory.lock().expect("factory lock");
+                factory.new_api_entry_context_ref()
+            },
+            application_dispatch_ref: {
+                let factory = support_ref_factory.lock().expect("factory lock");
+                factory.formalization_version_dispatch_ref()
+            },
+        },
+    );
+    assert_eq!(
+        conflict.result_kind,
+        method_library_application::MethodAssetStoredOperationResultKind::Conflict
+    );
+    assert!(conflict.rejected_reason_ref.is_some());
+}
+
+#[test]
 fn retire_formal_version_reads_back_after_commit_unknown_without_future_owner_precheck() {
     let runtime = InMemoryMethodAssetFormalizationVersionRuntime::new();
     let facade = runtime.facade();
