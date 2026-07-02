@@ -5,6 +5,7 @@ pub mod definition_catalog;
 pub mod errors;
 pub mod events;
 pub mod fixtures;
+pub mod formalization;
 pub mod jobs;
 pub mod metadata;
 pub mod queries;
@@ -18,14 +19,25 @@ pub use definition_catalog::{
     MethodAssetDefinitionSummary, MethodAssetIdentityKey,
 };
 pub use events::MethodLibraryEventShell;
+pub use formalization::{
+    ForbiddenFormalizationTriggerKind, ForbiddenFormalizationTriggerKindSet,
+    FormalMethodAssetVersionRefSet, FormalMethodAssetVersionState, FormalVersionBoundarySummary,
+    FormalizationBasisKind, FormalizationBasisKindSet, FormalizationBasisRequirement,
+    FormalizationBasisSafeSummary, FormalizationBasisSummaryRefSet, FormalizationStateKind,
+    FormalizationStateReasonSummary, MethodAssetDefinitionRequirement,
+    OptionalGovernanceBasisRequirement,
+};
 pub use jobs::{MethodLibraryJobShell, MethodLibraryOperationsJobKind};
 pub use queries::MethodLibraryQueryShell;
 pub use refs::{
-    CatalogScopeRef, ExternalSourceSummaryRef, MethodAssetAcceptedOperationSummaryRef,
-    MethodAssetApiEntryContextRef, MethodAssetApplicationDispatchRef, MethodAssetCatalogEntryRef,
-    MethodAssetDedupScopeRef, MethodAssetDefinitionRef, MethodAssetEffectSummaryRef,
-    MethodAssetIdempotencyKeyRef, MethodAssetOperationContextRef, MethodAssetOperationDigestRef,
-    MethodAssetReplayMarkerRef, MethodAssetSafeIgnoreReasonRef, MethodAssetSafeRejectReasonRef,
+    CatalogScopeRef, ExternalSourceSummaryRef, FormalMethodAssetVersionRef,
+    FormalizationBasisSummaryRef, FormalizationEligibilityRejectionRef,
+    FormalizationEligibilityRuleRef, FormalizationStateRef, GovernanceBasisRef,
+    MethodAssetAcceptedOperationSummaryRef, MethodAssetApiEntryContextRef,
+    MethodAssetApplicationDispatchRef, MethodAssetCatalogEntryRef, MethodAssetDedupScopeRef,
+    MethodAssetDefinitionRef, MethodAssetEffectSummaryRef, MethodAssetIdempotencyKeyRef,
+    MethodAssetOperationContextRef, MethodAssetOperationDigestRef, MethodAssetReplayMarkerRef,
+    MethodAssetSafeIgnoreReasonRef, MethodAssetSafeRejectReasonRef,
     MethodAssetStoredOperationResultRef, MethodLibraryTypedBoundaryRef,
     MethodLibraryTypedBoundaryRefKind, MethodLibraryTypedBoundaryRefKindMismatch,
 };

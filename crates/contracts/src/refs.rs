@@ -14,6 +14,16 @@ pub enum MethodLibraryTypedBoundaryRefKind {
     CatalogScope,
     /// Body-free governance basis anchor.
     GovernanceBasisRef,
+    /// Body-free formalization basis-summary anchor.
+    FormalizationBasisSummary,
+    /// Body-free formalization state anchor.
+    FormalizationState,
+    /// Body-free formal method-version anchor.
+    FormalMethodAssetVersion,
+    /// Body-free formalization eligibility-rule anchor.
+    FormalizationEligibilityRule,
+    /// Body-free formalization eligibility-rejection anchor.
+    FormalizationEligibilityRejection,
     /// Controlled consumption context anchor.
     ConsumptionContextRef,
     /// Trace or audit subject anchor.
@@ -142,6 +152,11 @@ macro_rules! named_typed_boundary_ref {
 }
 
 named_typed_boundary_ref!(
+    GovernanceBasisRef,
+    GovernanceBasisRef,
+    "Named typed boundary ref for a governance basis."
+);
+named_typed_boundary_ref!(
     MethodAssetDefinitionRef,
     MethodAssetDefinition,
     "Named typed boundary ref for a method asset definition."
@@ -150,6 +165,31 @@ named_typed_boundary_ref!(
     MethodAssetCatalogEntryRef,
     MethodAssetCatalogEntry,
     "Named typed boundary ref for a method asset catalog entry."
+);
+named_typed_boundary_ref!(
+    FormalizationBasisSummaryRef,
+    FormalizationBasisSummary,
+    "Named typed boundary ref for a formalization basis summary."
+);
+named_typed_boundary_ref!(
+    FormalizationStateRef,
+    FormalizationState,
+    "Named typed boundary ref for a formalization state."
+);
+named_typed_boundary_ref!(
+    FormalMethodAssetVersionRef,
+    FormalMethodAssetVersion,
+    "Named typed boundary ref for a formal method asset version."
+);
+named_typed_boundary_ref!(
+    FormalizationEligibilityRuleRef,
+    FormalizationEligibilityRule,
+    "Named typed boundary ref for a formalization eligibility rule."
+);
+named_typed_boundary_ref!(
+    FormalizationEligibilityRejectionRef,
+    FormalizationEligibilityRejection,
+    "Named typed boundary ref for a formalization eligibility rejection."
 );
 named_typed_boundary_ref!(
     CatalogScopeRef,
