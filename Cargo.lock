@@ -29,6 +29,7 @@ version = "0.1.0"
 dependencies = [
  "method-library-application",
  "method-library-contracts",
+ "method-library-domain",
  "method-library-infra",
 ]
 

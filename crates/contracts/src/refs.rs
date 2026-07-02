@@ -88,6 +88,18 @@ pub enum MethodLibraryTypedBoundaryRefKind {
     MethodAssetCatalogEntryReclassifyIntent,
     /// Catalog retire intent selector.
     MethodAssetCatalogEntryRetireIntent,
+    /// Formalization eligibility evaluate intent selector.
+    MethodAssetFormalizationEligibilityEvaluateIntent,
+    /// Formalization initiate intent selector.
+    MethodAssetFormalizationInitiateIntent,
+    /// Formal method-version establish intent selector.
+    FormalMethodAssetVersionEstablishIntent,
+    /// Formal method-version semantic-change record intent selector.
+    FormalMethodAssetVersionSemanticChangeRecordIntent,
+    /// Formal method-version supersede intent selector.
+    FormalMethodAssetVersionSupersedeIntent,
+    /// Formal method-version retire intent selector.
+    FormalMethodAssetVersionRetireIntent,
 }
 
 macro_rules! named_typed_boundary_ref {

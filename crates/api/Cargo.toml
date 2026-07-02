@@ -13,3 +13,6 @@ path = "src/lib.rs"
 method-library-application.workspace = true
 method-library-contracts.workspace = true
 method-library-infra.workspace = true
+
+[dev-dependencies]
+method-library-domain.workspace = true

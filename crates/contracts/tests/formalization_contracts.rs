@@ -28,6 +28,46 @@ fn formalization_ref_kinds_are_stable() {
     let version_kind = MethodLibraryTypedBoundaryRefKind::FormalMethodAssetVersion;
     let encoded = serde_json::to_string(&version_kind).expect("version kind should serialize");
     assert_eq!(encoded, "\"formal_method_asset_version\"");
+
+    let retire_intent = MethodLibraryTypedBoundaryRefKind::FormalMethodAssetVersionRetireIntent;
+    let encoded =
+        serde_json::to_string(&retire_intent).expect("retire intent label should serialize");
+    assert_eq!(encoded, "\"formal_method_asset_version_retire_intent\"");
+}
+
+#[test]
+fn formalization_selector_intent_labels_are_exact() {
+    let cases = [
+        (
+            MethodLibraryTypedBoundaryRefKind::MethodAssetFormalizationEligibilityEvaluateIntent,
+            "\"method_asset_formalization_eligibility_evaluate_intent\"",
+        ),
+        (
+            MethodLibraryTypedBoundaryRefKind::MethodAssetFormalizationInitiateIntent,
+            "\"method_asset_formalization_initiate_intent\"",
+        ),
+        (
+            MethodLibraryTypedBoundaryRefKind::FormalMethodAssetVersionEstablishIntent,
+            "\"formal_method_asset_version_establish_intent\"",
+        ),
+        (
+            MethodLibraryTypedBoundaryRefKind::FormalMethodAssetVersionSemanticChangeRecordIntent,
+            "\"formal_method_asset_version_semantic_change_record_intent\"",
+        ),
+        (
+            MethodLibraryTypedBoundaryRefKind::FormalMethodAssetVersionSupersedeIntent,
+            "\"formal_method_asset_version_supersede_intent\"",
+        ),
+        (
+            MethodLibraryTypedBoundaryRefKind::FormalMethodAssetVersionRetireIntent,
+            "\"formal_method_asset_version_retire_intent\"",
+        ),
+    ];
+
+    for (kind, expected) in cases {
+        let encoded = serde_json::to_string(&kind).expect("selector kind should serialize");
+        assert_eq!(encoded, expected);
+    }
 }
 
 #[test]

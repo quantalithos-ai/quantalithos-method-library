@@ -10,9 +10,9 @@ use method_library_application::ports::{
     MethodAssetDefinitionRepository, MethodAssetStoredOperationResultRepository,
 };
 use method_library_application::{
-    DefaultMethodAssetDefinitionCatalogCommandFacade, MethodAssetDefinitionCatalogCommandFacade,
-    MethodAssetDefinitionCatalogCommandSelector, MethodAssetDefinitionCatalogCommandSource,
-    MethodAssetDefinitionCatalogReplayEnvelope,
+    DefaultMethodAssetDefinitionCatalogCommandFacade, MethodAssetCommitObservation,
+    MethodAssetDefinitionCatalogCommandFacade, MethodAssetDefinitionCatalogCommandSelector,
+    MethodAssetDefinitionCatalogCommandSource, MethodAssetDefinitionCatalogReplayEnvelope,
     MethodAssetDefinitionCatalogReplayEnvelopeFactoryInput,
     MethodAssetDefinitionCatalogSupportRefFactory, MethodAssetExpectedVersion,
     MethodAssetRepositoryError, MethodAssetRepositoryVersion, MethodAssetStoredOperationResult,
@@ -355,7 +355,7 @@ struct InMemoryCommandUnitOfWork {
 }
 
 impl method_library_application::CommandUnitOfWork for InMemoryCommandUnitOfWork {
-    fn commit(&mut self) -> Result<(), ()> {
+    fn commit(&mut self) -> Result<MethodAssetCommitObservation, ()> {
         if !self.active {
             return Err(());
         }
@@ -426,7 +426,7 @@ impl method_library_application::CommandUnitOfWork for InMemoryCommandUnitOfWork
         }
 
         self.active = false;
-        Ok(())
+        Ok(MethodAssetCommitObservation::Committed)
     }
 
     fn rollback(&mut self) -> Result<(), ()> {
