@@ -1,10 +1,18 @@
-//! Shell-only transaction and helper carriers for the current implementation boundary.
+//! Application-owned transaction boundary for `commit-03-b`.
 
-/// Shell transaction boundary for current-boundary application work.
-pub trait UnitOfWork: Send + Sync {}
+use core::any::Any;
 
-/// Shell time source for current-boundary application work.
-pub trait Clock: Send + Sync {}
+/// A started command-scoped unit of work.
+pub trait CommandUnitOfWork: Send + Any {
+    /// Commits all staged writes.
+    fn commit(&mut self) -> Result<(), ()>;
 
-/// Shell typed-id source for current-boundary application work.
-pub trait IdGenerator: Send + Sync {}
+    /// Rolls back all staged writes.
+    fn rollback(&mut self) -> Result<(), ()>;
+}
+
+/// Unit-of-work factory for accepted command flows.
+pub trait UnitOfWork: Send + Sync {
+    /// Starts a new command unit of work.
+    fn begin_command_uow(&self) -> Box<dyn CommandUnitOfWork>;
+}

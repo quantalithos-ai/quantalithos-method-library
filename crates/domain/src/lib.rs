@@ -12,7 +12,9 @@ pub mod errors;
 pub mod policies;
 
 pub use errors::{MethodLibraryDomainError, MethodLibraryDomainErrorKind};
-pub use method_asset_definition::{MethodAssetCatalogEntry, MethodAssetDefinition};
+pub use method_asset_definition::{
+    MethodAssetCatalogEntry, MethodAssetDefinition, MethodAssetDefinitionLifecycle,
+};
 pub use policies::{
     ConsistencyProtectionJudgement, ConsistencyProtectionPolicy, DefinitionUseBoundaryGuard,
     DefinitionUseBoundaryGuardState, DownstreamConsumptionBoundary,

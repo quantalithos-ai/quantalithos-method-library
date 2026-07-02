@@ -1,6 +1,7 @@
 use method_library_contracts::{
     CatalogScopeRef, ExternalSourceSummaryRef, ExternalSourceSummaryRefSet,
-    MethodAssetApplicabilitySummary, MethodAssetCatalogEntryRef, MethodAssetCatalogEntryRefSet,
+    MethodAssetApplicabilitySummary, MethodAssetCatalogClassification, MethodAssetCatalogEntryRef,
+    MethodAssetCatalogEntryRefSet, MethodAssetDefinitionKind, MethodAssetIdentityKey,
     MethodLibrarySafeMarker, MethodLibraryTypedBoundaryRef, MethodLibraryTypedBoundaryRefKind,
 };
 
@@ -20,6 +21,10 @@ fn definition_catalog_ref_kinds_are_stable() {
     let summary_kind = MethodLibraryTypedBoundaryRefKind::ExternalSourceSummary;
     let encoded = serde_json::to_string(&summary_kind).expect("summary kind should serialize");
     assert_eq!(encoded, "\"external_source_summary\"");
+
+    let intent_kind = MethodLibraryTypedBoundaryRefKind::MethodAssetCatalogEntryRetireIntent;
+    let encoded = serde_json::to_string(&intent_kind).expect("intent kind should serialize");
+    assert_eq!(encoded, "\"method_asset_catalog_entry_retire_intent\"");
 }
 
 #[test]
@@ -99,4 +104,35 @@ fn applicability_summary_dedups_context_refs_in_first_seen_order() {
     );
 
     assert_eq!(summary.applicable_context_refs, vec![first, second]);
+}
+
+#[test]
+fn identity_key_and_catalog_classification_preserve_exact_scope_fields() {
+    let scope = CatalogScopeRef::new("ml:scope:1");
+    let identity = MethodAssetIdentityKey::new(
+        MethodAssetDefinitionKind::SpemMethodContent,
+        typed_ref(
+            MethodLibraryTypedBoundaryRefKind::GovernanceBasisRef,
+            "ml:ns:1",
+        ),
+        typed_ref(
+            MethodLibraryTypedBoundaryRefKind::TraceSubjectRef,
+            "ml:anchor:1",
+        ),
+        scope.clone(),
+    );
+    assert_eq!(identity.applicability_scope_ref, scope);
+
+    let classification = MethodAssetCatalogClassification::new(
+        MethodAssetDefinitionKind::SpemMethodContent,
+        CatalogScopeRef::new("ml:scope:1"),
+        MethodLibrarySafeMarker::boundary(typed_ref(
+            MethodLibraryTypedBoundaryRefKind::TraceSubjectRef,
+            "ml:classification:1",
+        )),
+    );
+    assert_eq!(
+        classification.catalog_scope_ref,
+        CatalogScopeRef::new("ml:scope:1")
+    );
 }

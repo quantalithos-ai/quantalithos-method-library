@@ -42,235 +42,185 @@ pub enum MethodLibraryTypedBoundaryRefKind {
     MethodSetAssemblyRef,
     /// Marketplace context anchor.
     MarketplaceContextRef,
+    /// Application-owned operation context anchor.
+    MethodAssetOperationContext,
+    /// Application-owned idempotency key anchor.
+    MethodAssetIdempotencyKey,
+    /// Application-owned operation digest anchor.
+    MethodAssetOperationDigest,
+    /// Application-owned dedup scope anchor.
+    MethodAssetDedupScope,
+    /// Stored operation result anchor.
+    MethodAssetStoredOperationResult,
+    /// Accepted operation summary anchor.
+    MethodAssetAcceptedOperationSummary,
+    /// Safe reject reason anchor.
+    MethodAssetSafeRejectReason,
+    /// Safe ignore reason anchor.
+    MethodAssetSafeIgnoreReason,
+    /// Effect summary anchor.
+    MethodAssetEffectSummary,
+    /// Replay marker anchor.
+    MethodAssetReplayMarker,
+    /// Application dispatch anchor.
+    MethodAssetApplicationDispatch,
+    /// API entry context anchor.
+    MethodAssetApiEntryContext,
+    /// Definition establish intent selector.
+    MethodAssetDefinitionEstablishIntent,
+    /// Definition adjust intent selector.
+    MethodAssetDefinitionAdjustIntent,
+    /// Definition retire intent selector.
+    MethodAssetDefinitionRetireIntent,
+    /// Catalog register intent selector.
+    MethodAssetCatalogEntryRegisterIntent,
+    /// Catalog reclassify intent selector.
+    MethodAssetCatalogEntryReclassifyIntent,
+    /// Catalog retire intent selector.
+    MethodAssetCatalogEntryRetireIntent,
 }
 
-/// Named typed boundary ref for a method asset definition.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct MethodAssetDefinitionRef {
-    /// The shared typed boundary ref.
-    pub boundary_ref: MethodLibraryTypedBoundaryRef,
-}
-
-impl MethodAssetDefinitionRef {
-    /// Creates a definition ref with the exact current-boundary kind.
-    pub fn new(public_ref: impl Into<String>) -> Self {
-        Self {
-            boundary_ref: MethodLibraryTypedBoundaryRef::new(
-                MethodLibraryTypedBoundaryRefKind::MethodAssetDefinition,
-                public_ref,
-            ),
+macro_rules! named_typed_boundary_ref {
+    ($name:ident, $kind:ident, $doc:literal) => {
+        #[doc = $doc]
+        #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+        pub struct $name {
+            /// The shared typed boundary ref.
+            pub boundary_ref: MethodLibraryTypedBoundaryRef,
         }
-    }
 
-    /// Returns the exact current-boundary kind.
-    pub const fn expected_kind() -> MethodLibraryTypedBoundaryRefKind {
-        MethodLibraryTypedBoundaryRefKind::MethodAssetDefinition
-    }
+        impl $name {
+            /// Creates a named wrapper with the exact current-boundary kind.
+            pub fn new(public_ref: impl Into<String>) -> Self {
+                Self {
+                    boundary_ref: MethodLibraryTypedBoundaryRef::new(
+                        MethodLibraryTypedBoundaryRefKind::$kind,
+                        public_ref,
+                    ),
+                }
+            }
 
-    /// Returns the inner typed boundary ref.
-    pub fn as_typed_ref(&self) -> &MethodLibraryTypedBoundaryRef {
-        &self.boundary_ref
-    }
+            /// Returns the exact current-boundary kind.
+            pub const fn expected_kind() -> MethodLibraryTypedBoundaryRefKind {
+                MethodLibraryTypedBoundaryRefKind::$kind
+            }
 
-    /// Returns the body-free public reference.
-    pub fn as_public_ref(&self) -> &str {
-        self.boundary_ref.as_public_ref()
-    }
-}
+            /// Returns the inner typed boundary ref.
+            pub fn as_typed_ref(&self) -> &MethodLibraryTypedBoundaryRef {
+                &self.boundary_ref
+            }
 
-impl From<MethodAssetDefinitionRef> for MethodLibraryTypedBoundaryRef {
-    fn from(value: MethodAssetDefinitionRef) -> Self {
-        value.boundary_ref
-    }
-}
-
-impl TryFrom<MethodLibraryTypedBoundaryRef> for MethodAssetDefinitionRef {
-    type Error = MethodLibraryTypedBoundaryRefKindMismatch;
-
-    fn try_from(value: MethodLibraryTypedBoundaryRef) -> Result<Self, Self::Error> {
-        if value.assert_kind(MethodLibraryTypedBoundaryRefKind::MethodAssetDefinition) {
-            Ok(Self {
-                boundary_ref: value,
-            })
-        } else {
-            Err(MethodLibraryTypedBoundaryRefKindMismatch::new(
-                MethodLibraryTypedBoundaryRefKind::MethodAssetDefinition,
-                value.kind(),
-            ))
+            /// Returns the body-free public reference.
+            pub fn as_public_ref(&self) -> &str {
+                self.boundary_ref.as_public_ref()
+            }
         }
-    }
-}
 
-/// Named typed boundary ref for a method asset catalog entry.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct MethodAssetCatalogEntryRef {
-    /// The shared typed boundary ref.
-    pub boundary_ref: MethodLibraryTypedBoundaryRef,
-}
-
-impl MethodAssetCatalogEntryRef {
-    /// Creates a catalog-entry ref with the exact current-boundary kind.
-    pub fn new(public_ref: impl Into<String>) -> Self {
-        Self {
-            boundary_ref: MethodLibraryTypedBoundaryRef::new(
-                MethodLibraryTypedBoundaryRefKind::MethodAssetCatalogEntry,
-                public_ref,
-            ),
+        impl From<$name> for MethodLibraryTypedBoundaryRef {
+            fn from(value: $name) -> Self {
+                value.boundary_ref
+            }
         }
-    }
 
-    /// Returns the exact current-boundary kind.
-    pub const fn expected_kind() -> MethodLibraryTypedBoundaryRefKind {
-        MethodLibraryTypedBoundaryRefKind::MethodAssetCatalogEntry
-    }
+        impl TryFrom<MethodLibraryTypedBoundaryRef> for $name {
+            type Error = MethodLibraryTypedBoundaryRefKindMismatch;
 
-    /// Returns the inner typed boundary ref.
-    pub fn as_typed_ref(&self) -> &MethodLibraryTypedBoundaryRef {
-        &self.boundary_ref
-    }
-
-    /// Returns the body-free public reference.
-    pub fn as_public_ref(&self) -> &str {
-        self.boundary_ref.as_public_ref()
-    }
-}
-
-impl From<MethodAssetCatalogEntryRef> for MethodLibraryTypedBoundaryRef {
-    fn from(value: MethodAssetCatalogEntryRef) -> Self {
-        value.boundary_ref
-    }
-}
-
-impl TryFrom<MethodLibraryTypedBoundaryRef> for MethodAssetCatalogEntryRef {
-    type Error = MethodLibraryTypedBoundaryRefKindMismatch;
-
-    fn try_from(value: MethodLibraryTypedBoundaryRef) -> Result<Self, Self::Error> {
-        if value.assert_kind(MethodLibraryTypedBoundaryRefKind::MethodAssetCatalogEntry) {
-            Ok(Self {
-                boundary_ref: value,
-            })
-        } else {
-            Err(MethodLibraryTypedBoundaryRefKindMismatch::new(
-                MethodLibraryTypedBoundaryRefKind::MethodAssetCatalogEntry,
-                value.kind(),
-            ))
+            fn try_from(value: MethodLibraryTypedBoundaryRef) -> Result<Self, Self::Error> {
+                if value.assert_kind(MethodLibraryTypedBoundaryRefKind::$kind) {
+                    Ok(Self {
+                        boundary_ref: value,
+                    })
+                } else {
+                    Err(MethodLibraryTypedBoundaryRefKindMismatch::new(
+                        MethodLibraryTypedBoundaryRefKind::$kind,
+                        value.kind(),
+                    ))
+                }
+            }
         }
-    }
+    };
 }
 
-/// Named typed boundary ref for a catalog scope.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct CatalogScopeRef {
-    /// The shared typed boundary ref.
-    pub boundary_ref: MethodLibraryTypedBoundaryRef,
-}
-
-impl CatalogScopeRef {
-    /// Creates a scope ref with the exact current-boundary kind.
-    pub fn new(public_ref: impl Into<String>) -> Self {
-        Self {
-            boundary_ref: MethodLibraryTypedBoundaryRef::new(
-                MethodLibraryTypedBoundaryRefKind::CatalogScope,
-                public_ref,
-            ),
-        }
-    }
-
-    /// Returns the exact current-boundary kind.
-    pub const fn expected_kind() -> MethodLibraryTypedBoundaryRefKind {
-        MethodLibraryTypedBoundaryRefKind::CatalogScope
-    }
-
-    /// Returns the inner typed boundary ref.
-    pub fn as_typed_ref(&self) -> &MethodLibraryTypedBoundaryRef {
-        &self.boundary_ref
-    }
-
-    /// Returns the body-free public reference.
-    pub fn as_public_ref(&self) -> &str {
-        self.boundary_ref.as_public_ref()
-    }
-}
-
-impl From<CatalogScopeRef> for MethodLibraryTypedBoundaryRef {
-    fn from(value: CatalogScopeRef) -> Self {
-        value.boundary_ref
-    }
-}
-
-impl TryFrom<MethodLibraryTypedBoundaryRef> for CatalogScopeRef {
-    type Error = MethodLibraryTypedBoundaryRefKindMismatch;
-
-    fn try_from(value: MethodLibraryTypedBoundaryRef) -> Result<Self, Self::Error> {
-        if value.assert_kind(MethodLibraryTypedBoundaryRefKind::CatalogScope) {
-            Ok(Self {
-                boundary_ref: value,
-            })
-        } else {
-            Err(MethodLibraryTypedBoundaryRefKindMismatch::new(
-                MethodLibraryTypedBoundaryRefKind::CatalogScope,
-                value.kind(),
-            ))
-        }
-    }
-}
-
-/// Named typed boundary ref for an external source summary.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct ExternalSourceSummaryRef {
-    /// The shared typed boundary ref.
-    pub boundary_ref: MethodLibraryTypedBoundaryRef,
-}
-
-impl ExternalSourceSummaryRef {
-    /// Creates an external summary ref with the exact current-boundary kind.
-    pub fn new(public_ref: impl Into<String>) -> Self {
-        Self {
-            boundary_ref: MethodLibraryTypedBoundaryRef::new(
-                MethodLibraryTypedBoundaryRefKind::ExternalSourceSummary,
-                public_ref,
-            ),
-        }
-    }
-
-    /// Returns the exact current-boundary kind.
-    pub const fn expected_kind() -> MethodLibraryTypedBoundaryRefKind {
-        MethodLibraryTypedBoundaryRefKind::ExternalSourceSummary
-    }
-
-    /// Returns the inner typed boundary ref.
-    pub fn as_typed_ref(&self) -> &MethodLibraryTypedBoundaryRef {
-        &self.boundary_ref
-    }
-
-    /// Returns the body-free public reference.
-    pub fn as_public_ref(&self) -> &str {
-        self.boundary_ref.as_public_ref()
-    }
-}
-
-impl From<ExternalSourceSummaryRef> for MethodLibraryTypedBoundaryRef {
-    fn from(value: ExternalSourceSummaryRef) -> Self {
-        value.boundary_ref
-    }
-}
-
-impl TryFrom<MethodLibraryTypedBoundaryRef> for ExternalSourceSummaryRef {
-    type Error = MethodLibraryTypedBoundaryRefKindMismatch;
-
-    fn try_from(value: MethodLibraryTypedBoundaryRef) -> Result<Self, Self::Error> {
-        if value.assert_kind(MethodLibraryTypedBoundaryRefKind::ExternalSourceSummary) {
-            Ok(Self {
-                boundary_ref: value,
-            })
-        } else {
-            Err(MethodLibraryTypedBoundaryRefKindMismatch::new(
-                MethodLibraryTypedBoundaryRefKind::ExternalSourceSummary,
-                value.kind(),
-            ))
-        }
-    }
-}
+named_typed_boundary_ref!(
+    MethodAssetDefinitionRef,
+    MethodAssetDefinition,
+    "Named typed boundary ref for a method asset definition."
+);
+named_typed_boundary_ref!(
+    MethodAssetCatalogEntryRef,
+    MethodAssetCatalogEntry,
+    "Named typed boundary ref for a method asset catalog entry."
+);
+named_typed_boundary_ref!(
+    CatalogScopeRef,
+    CatalogScope,
+    "Named typed boundary ref for a catalog scope."
+);
+named_typed_boundary_ref!(
+    ExternalSourceSummaryRef,
+    ExternalSourceSummary,
+    "Named typed boundary ref for an external source summary."
+);
+named_typed_boundary_ref!(
+    MethodAssetOperationContextRef,
+    MethodAssetOperationContext,
+    "Named typed boundary ref for an operation context."
+);
+named_typed_boundary_ref!(
+    MethodAssetIdempotencyKeyRef,
+    MethodAssetIdempotencyKey,
+    "Named typed boundary ref for an application-owned idempotency key."
+);
+named_typed_boundary_ref!(
+    MethodAssetOperationDigestRef,
+    MethodAssetOperationDigest,
+    "Named typed boundary ref for an operation digest."
+);
+named_typed_boundary_ref!(
+    MethodAssetDedupScopeRef,
+    MethodAssetDedupScope,
+    "Named typed boundary ref for a dedup scope."
+);
+named_typed_boundary_ref!(
+    MethodAssetStoredOperationResultRef,
+    MethodAssetStoredOperationResult,
+    "Named typed boundary ref for a stored operation result."
+);
+named_typed_boundary_ref!(
+    MethodAssetAcceptedOperationSummaryRef,
+    MethodAssetAcceptedOperationSummary,
+    "Named typed boundary ref for an accepted operation summary."
+);
+named_typed_boundary_ref!(
+    MethodAssetSafeRejectReasonRef,
+    MethodAssetSafeRejectReason,
+    "Named typed boundary ref for a safe reject reason."
+);
+named_typed_boundary_ref!(
+    MethodAssetSafeIgnoreReasonRef,
+    MethodAssetSafeIgnoreReason,
+    "Named typed boundary ref for a safe ignore reason."
+);
+named_typed_boundary_ref!(
+    MethodAssetEffectSummaryRef,
+    MethodAssetEffectSummary,
+    "Named typed boundary ref for an effect summary."
+);
+named_typed_boundary_ref!(
+    MethodAssetReplayMarkerRef,
+    MethodAssetReplayMarker,
+    "Named typed boundary ref for a replay marker."
+);
+named_typed_boundary_ref!(
+    MethodAssetApplicationDispatchRef,
+    MethodAssetApplicationDispatch,
+    "Named typed boundary ref for an application dispatch target."
+);
+named_typed_boundary_ref!(
+    MethodAssetApiEntryContextRef,
+    MethodAssetApiEntryContext,
+    "Named typed boundary ref for an API entry context."
+);
 
 /// Wrong-kind rejection for named typed-boundary wrappers.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

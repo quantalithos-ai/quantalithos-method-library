@@ -21,9 +21,13 @@ pub use events::MethodLibraryEventShell;
 pub use jobs::{MethodLibraryJobShell, MethodLibraryOperationsJobKind};
 pub use queries::MethodLibraryQueryShell;
 pub use refs::{
-    CatalogScopeRef, ExternalSourceSummaryRef, MethodAssetCatalogEntryRef,
-    MethodAssetDefinitionRef, MethodLibraryTypedBoundaryRef, MethodLibraryTypedBoundaryRefKind,
-    MethodLibraryTypedBoundaryRefKindMismatch,
+    CatalogScopeRef, ExternalSourceSummaryRef, MethodAssetAcceptedOperationSummaryRef,
+    MethodAssetApiEntryContextRef, MethodAssetApplicationDispatchRef, MethodAssetCatalogEntryRef,
+    MethodAssetDedupScopeRef, MethodAssetDefinitionRef, MethodAssetEffectSummaryRef,
+    MethodAssetIdempotencyKeyRef, MethodAssetOperationContextRef, MethodAssetOperationDigestRef,
+    MethodAssetReplayMarkerRef, MethodAssetSafeIgnoreReasonRef, MethodAssetSafeRejectReasonRef,
+    MethodAssetStoredOperationResultRef, MethodLibraryTypedBoundaryRef,
+    MethodLibraryTypedBoundaryRefKind, MethodLibraryTypedBoundaryRefKindMismatch,
 };
 pub use views::{
     MethodLibraryPublicShell, MethodLibrarySafeMarker, MethodLibrarySafeMarkerKind,

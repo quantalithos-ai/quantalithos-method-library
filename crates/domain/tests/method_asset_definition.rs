@@ -1,12 +1,13 @@
 use method_library_contracts::{
     CatalogScopeRef, ExternalSourceSummaryRef, ExternalSourceSummaryRefSet,
     MethodAssetApplicabilitySummary, MethodAssetCatalogClassification, MethodAssetCatalogEntryRef,
-    MethodAssetCatalogEntryRefSet, MethodAssetCatalogEntryStatus, MethodAssetDefinitionKind,
-    MethodAssetDefinitionRef, MethodAssetDefinitionSummary, MethodAssetIdentityKey,
-    MethodLibrarySafeMarker, MethodLibraryTypedBoundaryRef, MethodLibraryTypedBoundaryRefKind,
+    MethodAssetCatalogEntryStatus, MethodAssetDefinitionKind, MethodAssetDefinitionRef,
+    MethodAssetDefinitionSummary, MethodAssetIdentityKey, MethodLibrarySafeMarker,
+    MethodLibraryTypedBoundaryRef, MethodLibraryTypedBoundaryRefKind,
 };
 use method_library_domain::{
-    MethodAssetCatalogEntry, MethodAssetDefinition, MethodLibraryDomainErrorKind,
+    MethodAssetCatalogEntry, MethodAssetDefinition, MethodAssetDefinitionLifecycle,
+    MethodLibraryDomainErrorKind,
 };
 
 fn typed_ref(
@@ -65,29 +66,25 @@ fn sample_definition_summary(marker: MethodLibrarySafeMarker) -> MethodAssetDefi
 }
 
 fn sample_definition(marker: MethodLibrarySafeMarker) -> MethodAssetDefinition {
-    MethodAssetDefinition {
-        definition_ref: MethodAssetDefinitionRef::new("ml:def:1"),
-        definition_kind: MethodAssetDefinitionKind::SpemMethodContent,
-        identity_key: sample_identity_key(),
-        definition_summary: sample_definition_summary(marker),
-        source_summary_refs: ExternalSourceSummaryRefSet::new(),
-        catalog_entry_refs: MethodAssetCatalogEntryRefSet::new(),
-    }
+    MethodAssetDefinition::create(
+        MethodAssetDefinitionRef::new("ml:def:1"),
+        sample_identity_key(),
+        sample_definition_summary(marker),
+    )
 }
 
 fn sample_catalog_entry(status: MethodAssetCatalogEntryStatus) -> MethodAssetCatalogEntry {
     let catalog_scope_ref = CatalogScopeRef::new("ml:scope:1");
-
-    MethodAssetCatalogEntry {
-        catalog_entry_ref: MethodAssetCatalogEntryRef::new("ml:catalog:1"),
-        definition_ref: MethodAssetDefinitionRef::new("ml:def:1"),
-        catalog_scope_ref: catalog_scope_ref.clone(),
-        catalog_classification: MethodAssetCatalogClassification::new(
+    let mut entry = MethodAssetCatalogEntry::create_for_definition(
+        MethodAssetCatalogEntryRef::new("ml:catalog:1"),
+        MethodAssetDefinitionRef::new("ml:def:1"),
+        catalog_scope_ref.clone(),
+        MethodAssetCatalogClassification::new(
             MethodAssetDefinitionKind::SpemMethodContent,
             catalog_scope_ref.clone(),
             boundary_marker("ml:classification:1"),
         ),
-        applicability_summary: MethodAssetApplicabilitySummary::new(
+        MethodAssetApplicabilitySummary::new(
             catalog_scope_ref,
             boundary_marker("ml:applicability:1"),
             [typed_ref(
@@ -95,8 +92,10 @@ fn sample_catalog_entry(status: MethodAssetCatalogEntryStatus) -> MethodAssetCat
                 "ml:ctx:1",
             )],
         ),
-        catalog_status: status,
-    }
+    )
+    .expect("catalog create should be valid");
+    entry.catalog_status = status;
+    entry
 }
 
 #[test]
@@ -114,6 +113,77 @@ fn definition_body_free_requires_no_body_marker() {
 }
 
 #[test]
+fn definition_create_initializes_active_lifecycle() {
+    let definition = sample_definition(no_body_marker("ml:marker:no-body"));
+    assert_eq!(
+        definition.definition_lifecycle,
+        MethodAssetDefinitionLifecycle::Active
+    );
+}
+
+#[test]
+fn definition_adjust_preserves_active_and_replaces_summary_and_sources() {
+    let mut definition = sample_definition(no_body_marker("ml:marker:no-body"));
+    let replacement_summary = MethodAssetDefinitionSummary::new(
+        typed_ref(
+            MethodLibraryTypedBoundaryRefKind::TraceSubjectRef,
+            "ml:summary:replacement",
+        ),
+        MethodAssetDefinitionKind::SpemMethodContent,
+        typed_ref(
+            MethodLibraryTypedBoundaryRefKind::TraceSubjectRef,
+            "ml:title:replacement",
+        ),
+        None,
+        no_body_marker("ml:marker:replacement"),
+    );
+    let replacement_sources =
+        ExternalSourceSummaryRefSet::from_refs([ExternalSourceSummaryRef::new("ml:summary:src:1")]);
+
+    definition
+        .apply_adjustment(replacement_summary.clone(), replacement_sources.clone())
+        .expect("active definitions can be adjusted");
+
+    assert_eq!(definition.definition_summary, replacement_summary);
+    assert_eq!(definition.source_summary_refs, replacement_sources);
+    assert_eq!(
+        definition.definition_lifecycle,
+        MethodAssetDefinitionLifecycle::Active
+    );
+}
+
+#[test]
+fn retired_definition_rejects_adjust_and_retire() {
+    let mut definition = sample_definition(no_body_marker("ml:marker:no-body"));
+    definition
+        .mark_retired(boundary_marker("ml:reason:retire"))
+        .expect("active definition can retire");
+    assert_eq!(
+        definition.definition_lifecycle,
+        MethodAssetDefinitionLifecycle::Retired
+    );
+
+    let adjust_error = definition
+        .apply_adjustment(
+            sample_definition_summary(no_body_marker("ml:marker:replacement")),
+            ExternalSourceSummaryRefSet::new(),
+        )
+        .expect_err("retired definitions must reject adjust");
+    assert_eq!(
+        adjust_error.kind(),
+        MethodLibraryDomainErrorKind::InvalidTransition
+    );
+
+    let retire_error = definition
+        .mark_retired(boundary_marker("ml:reason:retire:again"))
+        .expect_err("retired definitions must stay terminal");
+    assert_eq!(
+        retire_error.kind(),
+        MethodLibraryDomainErrorKind::InvalidTransition
+    );
+}
+
+#[test]
 fn definition_links_catalog_entries_and_source_summaries_without_duplicates() {
     let mut definition = sample_definition(no_body_marker("ml:marker:no-body"));
     let catalog_ref = MethodAssetCatalogEntryRef::new("ml:catalog:1");
@@ -126,6 +196,120 @@ fn definition_links_catalog_entries_and_source_summaries_without_duplicates() {
 
     assert_eq!(definition.catalog_entry_refs.refs, vec![catalog_ref]);
     assert_eq!(definition.source_summary_refs.refs, vec![summary_ref]);
+}
+
+#[test]
+fn catalog_create_requires_scope_consistency_and_sets_visible() {
+    let catalog_scope_ref = CatalogScopeRef::new("ml:scope:1");
+    let entry = MethodAssetCatalogEntry::create_for_definition(
+        MethodAssetCatalogEntryRef::new("ml:catalog:1"),
+        MethodAssetDefinitionRef::new("ml:def:1"),
+        catalog_scope_ref.clone(),
+        MethodAssetCatalogClassification::new(
+            MethodAssetDefinitionKind::SpemMethodContent,
+            catalog_scope_ref.clone(),
+            boundary_marker("ml:classification:1"),
+        ),
+        MethodAssetApplicabilitySummary::new(
+            catalog_scope_ref.clone(),
+            boundary_marker("ml:applicability:1"),
+            [],
+        ),
+    )
+    .expect("scope-aligned create should succeed");
+    assert_eq!(entry.catalog_scope_ref, catalog_scope_ref);
+    assert_eq!(entry.catalog_status, MethodAssetCatalogEntryStatus::Visible);
+
+    let error = MethodAssetCatalogEntry::create_for_definition(
+        MethodAssetCatalogEntryRef::new("ml:catalog:2"),
+        MethodAssetDefinitionRef::new("ml:def:1"),
+        CatalogScopeRef::new("ml:scope:1"),
+        MethodAssetCatalogClassification::new(
+            MethodAssetDefinitionKind::SpemMethodContent,
+            CatalogScopeRef::new("ml:scope:2"),
+            boundary_marker("ml:classification:2"),
+        ),
+        MethodAssetApplicabilitySummary::new(
+            CatalogScopeRef::new("ml:scope:1"),
+            boundary_marker("ml:applicability:2"),
+            [],
+        ),
+    )
+    .expect_err("mismatched scope must be rejected");
+    assert_eq!(
+        error.kind(),
+        MethodLibraryDomainErrorKind::InvariantViolation
+    );
+}
+
+#[test]
+fn catalog_reclassify_updates_scope_classification_and_applicability_together() {
+    let mut entry = sample_catalog_entry(MethodAssetCatalogEntryStatus::Visible);
+    let new_scope = CatalogScopeRef::new("ml:scope:2");
+    let new_classification = MethodAssetCatalogClassification::new(
+        MethodAssetDefinitionKind::SpemMethodContent,
+        new_scope.clone(),
+        boundary_marker("ml:classification:2"),
+    );
+    let new_applicability = MethodAssetApplicabilitySummary::new(
+        new_scope.clone(),
+        boundary_marker("ml:applicability:2"),
+        [typed_ref(
+            MethodLibraryTypedBoundaryRefKind::ConsumptionContextRef,
+            "ml:ctx:2",
+        )],
+    );
+
+    entry
+        .reclassify(new_classification.clone(), new_applicability.clone())
+        .expect("visible entry can be reclassified");
+
+    assert_eq!(entry.catalog_scope_ref, new_scope);
+    assert_eq!(entry.catalog_classification, new_classification);
+    assert_eq!(entry.applicability_summary, new_applicability);
+    assert_eq!(entry.catalog_status, MethodAssetCatalogEntryStatus::Visible);
+}
+
+#[test]
+fn catalog_reclassify_rejects_non_visible_or_scope_mismatch() {
+    let error = sample_catalog_entry(MethodAssetCatalogEntryStatus::Retired)
+        .reclassify(
+            MethodAssetCatalogClassification::new(
+                MethodAssetDefinitionKind::SpemMethodContent,
+                CatalogScopeRef::new("ml:scope:1"),
+                boundary_marker("ml:classification:2"),
+            ),
+            MethodAssetApplicabilitySummary::new(
+                CatalogScopeRef::new("ml:scope:1"),
+                boundary_marker("ml:applicability:2"),
+                [],
+            ),
+        )
+        .expect_err("retired entries must not reclassify");
+    assert_eq!(
+        error.kind(),
+        MethodLibraryDomainErrorKind::InvalidTransition
+    );
+
+    let mut visible = sample_catalog_entry(MethodAssetCatalogEntryStatus::Visible);
+    let mismatch_error = visible
+        .reclassify(
+            MethodAssetCatalogClassification::new(
+                MethodAssetDefinitionKind::SpemMethodContent,
+                CatalogScopeRef::new("ml:scope:2"),
+                boundary_marker("ml:classification:3"),
+            ),
+            MethodAssetApplicabilitySummary::new(
+                CatalogScopeRef::new("ml:scope:3"),
+                boundary_marker("ml:applicability:3"),
+                [],
+            ),
+        )
+        .expect_err("scope mismatch must be rejected");
+    assert_eq!(
+        mismatch_error.kind(),
+        MethodLibraryDomainErrorKind::InvariantViolation
+    );
 }
 
 #[test]
@@ -161,20 +345,23 @@ fn retired_catalog_entry_rejects_deprecation() {
 }
 
 #[test]
-fn catalog_entry_rejects_reclassification_to_a_different_scope() {
+fn catalog_retire_requires_visible_and_preserves_identity() {
     let mut entry = sample_catalog_entry(MethodAssetCatalogEntryStatus::Visible);
-    let different_scope = CatalogScopeRef::new("ml:scope:2");
+    let original_definition_ref = entry.definition_ref.clone();
+    let original_catalog_ref = entry.catalog_entry_ref.clone();
+
+    entry
+        .mark_retired(boundary_marker("ml:reason:retired"))
+        .expect("visible entry can retire");
+    assert_eq!(entry.catalog_status, MethodAssetCatalogEntryStatus::Retired);
+    assert_eq!(entry.definition_ref, original_definition_ref);
+    assert_eq!(entry.catalog_entry_ref, original_catalog_ref);
 
     let error = entry
-        .update_classification(MethodAssetCatalogClassification::new(
-            MethodAssetDefinitionKind::SpemMethodContent,
-            different_scope,
-            boundary_marker("ml:classification:2"),
-        ))
-        .expect_err("classification scope must remain aligned with the entry scope");
-
+        .mark_retired(boundary_marker("ml:reason:retired:again"))
+        .expect_err("retired entries stay terminal");
     assert_eq!(
         error.kind(),
-        MethodLibraryDomainErrorKind::InvariantViolation
+        MethodLibraryDomainErrorKind::InvalidTransition
     );
 }
