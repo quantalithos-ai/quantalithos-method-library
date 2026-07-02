@@ -1,0 +1,43 @@
+    Blocking waiting for file lock on artifact directory
+   Compiling method-library-application v0.1.0 (/home/aris/Projects/quantalithos-method-library/crates/application)
+   Compiling method-library-api v0.1.0 (/home/aris/Projects/quantalithos-method-library/crates/api)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.45s
+     Running unittests src/lib.rs (target/debug/deps/method_library_api-f3ffd9629873be18)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/definition_catalog_entry.rs (target/debug/deps/definition_catalog_entry-7a383a23ac44c3e1)
+
+running 1 test
+test api_entry_creates_context_and_delegates_to_facade ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/method_library_application-ac9153c7a1893511)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/definition_catalog_foundation.rs (target/debug/deps/definition_catalog_foundation-a049fd4fb7514953)
+
+running 3 tests
+test application_ports_and_facade_surfaces_are_object_safe ... ok
+test current_boundary_selectors_and_result_kinds_are_closed ... ok
+test effect_summary_ref_set_keeps_first_insertion_order_after_dedup ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests method_library_api
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests method_library_application
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

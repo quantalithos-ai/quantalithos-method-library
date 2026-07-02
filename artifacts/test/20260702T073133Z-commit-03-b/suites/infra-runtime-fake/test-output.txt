@@ -1,0 +1,23 @@
+   Compiling method-library-application v0.1.0 (/home/aris/Projects/quantalithos-method-library/crates/application)
+   Compiling method-library-infra v0.1.0 (/home/aris/Projects/quantalithos-method-library/crates/infra)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.32s
+     Running unittests src/lib.rs (target/debug/deps/method_library_infra-72543cbc990e72e7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/definition_catalog_runtime.rs (target/debug/deps/definition_catalog_runtime-9f7c6f4788c65e65)
+
+running 3 tests
+test rollback_hides_directly_staged_definition_write ... ok
+test definition_lifecycle_persists_and_duplicate_replay_does_not_rerun_mutation ... ok
+test catalog_status_persists_visible_to_retired_and_replays_duplicates ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests method_library_infra
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

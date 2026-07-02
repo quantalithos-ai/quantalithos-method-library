@@ -1,0 +1,4 @@
+Path check OK
+run_id=20260702T073133Z-commit-03-b
+artifact_root=artifacts/test/20260702T073133Z-commit-03-b
+report_root=reports/runs/20260702T073133Z-commit-03-b
