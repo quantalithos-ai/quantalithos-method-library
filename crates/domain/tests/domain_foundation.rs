@@ -200,7 +200,7 @@ fn external_body_rule_enforces_body_free_redline_and_invariants() {
 
     let redline_error = sample_external_rule(ExternalBodyBoundaryState::InvalidCandidate)
         .assert_summary_body_free(true)
-        .expect_err("raw body candidate must be rejected at the pure-domain boundary");
+        .expect_err("body-bearing candidate must be rejected at the pure-domain boundary");
     assert_eq!(
         redline_error.kind(),
         MethodLibraryDomainErrorKind::BodyFreeBoundaryViolation
