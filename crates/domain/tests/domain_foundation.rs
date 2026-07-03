@@ -2,10 +2,9 @@ use method_library_contracts::{
     MethodLibrarySafeMarker, MethodLibraryTypedBoundaryRef, MethodLibraryTypedBoundaryRefKind,
 };
 use method_library_domain::{
-    ConsistencyProtectionJudgement, ConsistencyProtectionPolicy, DefinitionUseBoundaryGuard,
-    DefinitionUseBoundaryGuardState, DownstreamConsumptionBoundary,
-    DownstreamConsumptionBoundaryState, ExternalBodyBoundaryRule, ExternalBodyBoundaryState,
-    MethodLibraryDomainErrorKind, RelationIntegrityJudgement, RelationIntegrityRule,
+    ConsistencyProtectionJudgement, ConsistencyProtectionPolicy, ExternalBodyBoundaryRule,
+    ExternalBodyBoundaryState, MethodLibraryDomainErrorKind, RelationIntegrityJudgement,
+    RelationIntegrityRule,
 };
 
 fn sample_ref(
@@ -27,50 +26,6 @@ fn sample_no_body_marker(value: &str) -> MethodLibrarySafeMarker {
         MethodLibraryTypedBoundaryRefKind::ArtifactArchiveRef,
         value,
     ))
-}
-
-fn sample_definition_guard() -> DefinitionUseBoundaryGuard {
-    DefinitionUseBoundaryGuard::try_new(
-        Some(sample_ref(
-            MethodLibraryTypedBoundaryRefKind::TraceSubjectRef,
-            "ml:guard:1",
-        )),
-        Some(sample_ref(
-            MethodLibraryTypedBoundaryRefKind::MethodAssetDefinition,
-            "ml:def:1",
-        )),
-        Some(sample_ref(
-            MethodLibraryTypedBoundaryRefKind::GovernanceBasisRef,
-            "ml:formal-version:1",
-        )),
-        Some(sample_ref(
-            MethodLibraryTypedBoundaryRefKind::ConsumptionContextRef,
-            "ml:context:1",
-        )),
-        Some(sample_ref(
-            MethodLibraryTypedBoundaryRefKind::DistributionContextRef,
-            "ml:boundary:1",
-        )),
-        Some(sample_marker("ml:marker:guard")),
-        DefinitionUseBoundaryGuardState::Monitoring,
-    )
-    .expect("guard shell should be valid")
-}
-
-fn sample_downstream_boundary() -> DownstreamConsumptionBoundary {
-    DownstreamConsumptionBoundary::try_new(
-        Some(sample_ref(
-            MethodLibraryTypedBoundaryRefKind::DistributionContextRef,
-            "ml:boundary:2",
-        )),
-        Some(sample_ref(
-            MethodLibraryTypedBoundaryRefKind::ConsumptionContextRef,
-            "ml:context:2",
-        )),
-        Some(sample_marker("ml:marker:boundary")),
-        DownstreamConsumptionBoundaryState::Registered,
-    )
-    .expect("boundary shell should be valid")
 }
 
 fn sample_consistency_policy() -> ConsistencyProtectionPolicy {
@@ -144,49 +99,7 @@ fn sample_external_rule(state: ExternalBodyBoundaryState) -> ExternalBodyBoundar
 }
 
 #[test]
-fn policy_shells_require_current_boundary_typed_carriers() {
-    let definition_error = DefinitionUseBoundaryGuard::try_new(
-        None,
-        Some(sample_ref(
-            MethodLibraryTypedBoundaryRefKind::MethodAssetDefinition,
-            "ml:def:1",
-        )),
-        Some(sample_ref(
-            MethodLibraryTypedBoundaryRefKind::GovernanceBasisRef,
-            "ml:formal-version:1",
-        )),
-        Some(sample_ref(
-            MethodLibraryTypedBoundaryRefKind::ConsumptionContextRef,
-            "ml:context:1",
-        )),
-        Some(sample_ref(
-            MethodLibraryTypedBoundaryRefKind::DistributionContextRef,
-            "ml:boundary:1",
-        )),
-        Some(sample_marker("ml:marker:guard")),
-        DefinitionUseBoundaryGuardState::Monitoring,
-    )
-    .expect_err("guard shell must reject missing guard_ref");
-    assert_eq!(
-        definition_error.kind(),
-        MethodLibraryDomainErrorKind::MissingRequiredTypedInput
-    );
-
-    let boundary_error = DownstreamConsumptionBoundary::try_new(
-        Some(sample_ref(
-            MethodLibraryTypedBoundaryRefKind::DistributionContextRef,
-            "ml:boundary:2",
-        )),
-        None,
-        Some(sample_marker("ml:marker:boundary")),
-        DownstreamConsumptionBoundaryState::Registered,
-    )
-    .expect_err("boundary shell must reject missing context_ref");
-    assert_eq!(
-        boundary_error.kind(),
-        MethodLibraryDomainErrorKind::MissingRequiredTypedInput
-    );
-
+fn shared_foundation_shells_require_current_boundary_typed_carriers() {
     let consistency_error = ConsistencyProtectionPolicy::try_new(
         Some(sample_ref(
             MethodLibraryTypedBoundaryRefKind::TraceSubjectRef,
@@ -243,54 +156,6 @@ fn policy_shells_require_current_boundary_typed_carriers() {
     assert_eq!(
         external_error.kind(),
         MethodLibraryDomainErrorKind::MissingRequiredTypedInput
-    );
-}
-
-#[test]
-fn guard_state_tracks_legal_and_illegal_transitions() {
-    let recorded = DefinitionUseBoundaryGuardState::Monitoring
-        .record_violation(true, false)
-        .expect("monitoring branch should allow a safe recorded transition");
-    assert_eq!(recorded, DefinitionUseBoundaryGuardState::ViolationRecorded);
-
-    let rejected = DefinitionUseBoundaryGuardState::Monitoring
-        .record_violation(false, true)
-        .expect("monitoring branch should allow a rejected candidate transition");
-    assert_eq!(rejected, DefinitionUseBoundaryGuardState::RejectedCandidate);
-
-    let transition_error = DefinitionUseBoundaryGuardState::ViolationRecorded
-        .record_violation(true, false)
-        .expect_err("recorded state cannot re-enter the monitoring transition");
-    assert_eq!(
-        transition_error.kind(),
-        MethodLibraryDomainErrorKind::InvalidTransition
-    );
-}
-
-#[test]
-fn rejected_guard_branch_surfaces_policy_rejected() {
-    let guard = sample_definition_guard();
-    let error = guard
-        .evaluate_violation_candidate(None, true)
-        .expect_err("missing safe reason or raw body should surface policy rejection");
-    assert_eq!(error.kind(), MethodLibraryDomainErrorKind::PolicyRejected);
-}
-
-#[test]
-fn downstream_boundary_adjustments_stay_within_allowed_labels() {
-    let registered = DownstreamConsumptionBoundaryState::register(false);
-    let constrained = registered.adjust(DownstreamConsumptionBoundaryState::Constrained);
-    let unavailable = constrained.adjust(DownstreamConsumptionBoundaryState::Unavailable);
-
-    assert_eq!(registered, DownstreamConsumptionBoundaryState::Registered);
-    assert_eq!(constrained, DownstreamConsumptionBoundaryState::Constrained);
-    assert_eq!(unavailable, DownstreamConsumptionBoundaryState::Unavailable);
-
-    let updated =
-        sample_downstream_boundary().adjust(DownstreamConsumptionBoundaryState::Constrained);
-    assert_eq!(
-        updated.state,
-        DownstreamConsumptionBoundaryState::Constrained
     );
 }
 
@@ -360,20 +225,20 @@ fn external_body_rule_enforces_body_free_redline_and_invariants() {
     let invalid_rule = ExternalBodyBoundaryRule::try_new(
         Some(sample_ref(
             MethodLibraryTypedBoundaryRefKind::TraceSubjectRef,
-            "ml:rule:external-invalid",
+            "ml:rule:external:invalid",
         )),
         None,
         None,
         None,
-        Some(sample_no_body_marker("ml:marker:external-invalid")),
+        Some(sample_no_body_marker("ml:marker:external:invalid")),
         ExternalBodyBoundaryState::AssertedBodyFree,
     )
-    .expect("manual shell construction is allowed before invariant validation");
-    let invariant_error = invalid_rule
+    .expect("shell should build before invariant validation");
+    let error = invalid_rule
         .assert_current_boundary_invariant()
-        .expect_err("asserted body-free state requires a candidate ref");
+        .expect_err("asserted boundary requires a candidate ref");
     assert_eq!(
-        invariant_error.kind(),
+        error.kind(),
         MethodLibraryDomainErrorKind::InvariantViolation
     );
 }

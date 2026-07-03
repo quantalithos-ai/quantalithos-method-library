@@ -1,6 +1,7 @@
 //! Public contract skeleton for the method library workspace.
 
 pub mod commands;
+pub mod consumption;
 pub mod definition_catalog;
 pub mod errors;
 pub mod events;
@@ -13,6 +14,15 @@ pub mod refs;
 pub mod views;
 
 pub use commands::{MethodLibraryCapabilityKind, MethodLibraryCommandShell};
+pub use consumption::{
+    ConsumptionBoundaryReasonRef, DefinitionUseBoundaryGuardState, DefinitionUseGuardReasonRef,
+    DownstreamConsumptionBoundaryState, DownstreamForbiddenWriteKind,
+    DownstreamForbiddenWriteKindSet, FormalVersionRequiredState, FormalVersionRequirement,
+    MethodAssetAllowedUseKind, MethodAssetAllowedUseKindSet,
+    MethodAssetConsumptionAvailabilityMarker, MethodAssetConsumptionAvailabilityMarkerSource,
+    MethodAssetConsumptionAvailabilityTarget, MethodAssetConsumptionMaterialState,
+    MethodAssetConsumptionSummary,
+};
 pub use definition_catalog::{
     ExternalSourceSummaryRefSet, MethodAssetApplicabilitySummary, MethodAssetCatalogClassification,
     MethodAssetCatalogEntryRefSet, MethodAssetCatalogEntryStatus, MethodAssetDefinitionKind,
@@ -30,16 +40,19 @@ pub use formalization::{
 pub use jobs::{MethodLibraryJobShell, MethodLibraryOperationsJobKind};
 pub use queries::MethodLibraryQueryShell;
 pub use refs::{
-    CatalogScopeRef, ExternalSourceSummaryRef, FormalMethodAssetVersionRef,
+    CatalogScopeRef, ConsumptionContextRef, DefinitionUseBoundaryGuardRef,
+    DownstreamConsumptionBoundaryRef, ExternalSourceSummaryRef, FormalMethodAssetVersionRef,
     FormalizationBasisSummaryRef, FormalizationEligibilityRejectionRef,
     FormalizationEligibilityRuleRef, FormalizationStateRef, GovernanceBasisRef,
     MethodAssetAcceptedOperationSummaryRef, MethodAssetApiEntryContextRef,
-    MethodAssetApplicationDispatchRef, MethodAssetCatalogEntryRef, MethodAssetDedupScopeRef,
-    MethodAssetDefinitionRef, MethodAssetEffectSummaryRef, MethodAssetIdempotencyKeyRef,
-    MethodAssetOperationContextRef, MethodAssetOperationDigestRef, MethodAssetReplayMarkerRef,
-    MethodAssetSafeIgnoreReasonRef, MethodAssetSafeRejectReasonRef,
-    MethodAssetStoredOperationResultRef, MethodLibraryTypedBoundaryRef,
-    MethodLibraryTypedBoundaryRefKind, MethodLibraryTypedBoundaryRefKindMismatch,
+    MethodAssetApplicationDispatchRef, MethodAssetCatalogEntryRef,
+    MethodAssetConsumptionMaterialCursorRef, MethodAssetConsumptionMaterialRef,
+    MethodAssetConsumptionMaterialScopeRef, MethodAssetDedupScopeRef, MethodAssetDefinitionRef,
+    MethodAssetEffectSummaryRef, MethodAssetIdempotencyKeyRef, MethodAssetOperationContextRef,
+    MethodAssetOperationDigestRef, MethodAssetReplayMarkerRef, MethodAssetSafeIgnoreReasonRef,
+    MethodAssetSafeRejectReasonRef, MethodAssetStoredOperationResultRef,
+    MethodLibraryTypedBoundaryRef, MethodLibraryTypedBoundaryRefKind,
+    MethodLibraryTypedBoundaryRefKindMismatch,
 };
 pub use views::{
     MethodLibraryPublicShell, MethodLibrarySafeMarker, MethodLibrarySafeMarkerKind,

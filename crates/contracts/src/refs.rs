@@ -26,6 +26,18 @@ pub enum MethodLibraryTypedBoundaryRefKind {
     FormalizationEligibilityRejection,
     /// Controlled consumption context anchor.
     ConsumptionContextRef,
+    /// Controlled consumption context anchor closed for `commit-05-a`.
+    ConsumptionContext,
+    /// Controlled consumption material anchor.
+    MethodAssetConsumptionMaterial,
+    /// Controlled consumption boundary anchor.
+    DownstreamConsumptionBoundary,
+    /// Controlled consumption source-cursor anchor.
+    MethodAssetConsumptionMaterialCursor,
+    /// Definition-vs-use guard anchor.
+    DefinitionUseBoundaryGuard,
+    /// Controlled consumption material-scope anchor.
+    MethodAssetConsumptionMaterialScope,
     /// Trace or audit subject anchor.
     TraceSubjectRef,
     /// Consumption impact source anchor.
@@ -202,6 +214,36 @@ named_typed_boundary_ref!(
     FormalizationEligibilityRejectionRef,
     FormalizationEligibilityRejection,
     "Named typed boundary ref for a formalization eligibility rejection."
+);
+named_typed_boundary_ref!(
+    MethodAssetConsumptionMaterialRef,
+    MethodAssetConsumptionMaterial,
+    "Named typed boundary ref for a method asset consumption material."
+);
+named_typed_boundary_ref!(
+    ConsumptionContextRef,
+    ConsumptionContext,
+    "Named typed boundary ref for a controlled consumption context."
+);
+named_typed_boundary_ref!(
+    DownstreamConsumptionBoundaryRef,
+    DownstreamConsumptionBoundary,
+    "Named typed boundary ref for a downstream consumption boundary."
+);
+named_typed_boundary_ref!(
+    MethodAssetConsumptionMaterialCursorRef,
+    MethodAssetConsumptionMaterialCursor,
+    "Named typed boundary ref for a method asset consumption material cursor."
+);
+named_typed_boundary_ref!(
+    DefinitionUseBoundaryGuardRef,
+    DefinitionUseBoundaryGuard,
+    "Named typed boundary ref for a definition-use boundary guard."
+);
+named_typed_boundary_ref!(
+    MethodAssetConsumptionMaterialScopeRef,
+    MethodAssetConsumptionMaterialScope,
+    "Named typed boundary ref for a method asset consumption material scope."
 );
 named_typed_boundary_ref!(
     CatalogScopeRef,

@@ -1,6 +1,13 @@
 //! Shared current-boundary policy shells and judgement carriers.
 
-use method_library_contracts::{MethodLibrarySafeMarker, MethodLibraryTypedBoundaryRef};
+use method_library_contracts::{
+    ConsumptionBoundaryReasonRef, ConsumptionContextRef, DefinitionUseBoundaryGuardRef,
+    DefinitionUseBoundaryGuardState, DefinitionUseGuardReasonRef, DownstreamConsumptionBoundaryRef,
+    DownstreamConsumptionBoundaryState, DownstreamForbiddenWriteKindSet,
+    FormalMethodAssetVersionRef, FormalVersionRequirement, MethodAssetAllowedUseKind,
+    MethodAssetAllowedUseKindSet, MethodAssetConsumptionMaterialScopeRef, MethodAssetDefinitionRef,
+    MethodLibrarySafeMarker, MethodLibraryTypedBoundaryRef,
+};
 
 use crate::errors::MethodLibraryDomainError;
 
@@ -16,157 +23,220 @@ fn required_marker(
     value.ok_or_else(MethodLibraryDomainError::missing_required_typed_input)
 }
 
-/// Judgement state for `DefinitionUseBoundaryGuard`.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum DefinitionUseBoundaryGuardState {
-    /// The guard is monitoring use-boundary violations.
-    Monitoring,
-    /// A safe violation marker was recorded.
-    ViolationRecorded,
-    /// The candidate was rejected before a safe violation could be recorded.
-    RejectedCandidate,
-}
-
-impl DefinitionUseBoundaryGuardState {
-    /// Applies the current-boundary violation-recording transition.
-    pub fn record_violation(
-        self,
-        has_safe_reason: bool,
-        raw_body_candidate: bool,
-    ) -> Result<Self, MethodLibraryDomainError> {
-        match self {
-            Self::Monitoring if has_safe_reason && !raw_body_candidate => {
-                Ok(Self::ViolationRecorded)
-            }
-            Self::Monitoring => Ok(Self::RejectedCandidate),
-            _ => Err(MethodLibraryDomainError::invalid_transition()),
-        }
-    }
-
-    /// Rejects the rejected-branch state with the exact policy error kind.
-    pub fn assert_not_rejected(self) -> Result<Self, MethodLibraryDomainError> {
-        if matches!(self, Self::RejectedCandidate) {
-            return Err(MethodLibraryDomainError::policy_rejected());
-        }
-
-        Ok(self)
-    }
-}
-
 /// Shared pure-domain shell for the Definition-vs-Use guard.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DefinitionUseBoundaryGuard {
-    /// The opaque stable guard anchor.
-    pub guard_ref: MethodLibraryTypedBoundaryRef,
-    /// The protected method-definition anchor.
-    pub protected_definition_ref: MethodLibraryTypedBoundaryRef,
-    /// The protected formal-version anchor.
-    pub protected_formal_version_ref: MethodLibraryTypedBoundaryRef,
-    /// The controlled consumption-context anchor.
-    pub consumption_context_ref: MethodLibraryTypedBoundaryRef,
-    /// The related downstream-boundary anchor.
-    pub boundary_ref: MethodLibraryTypedBoundaryRef,
-    /// The safe reason marker carried by the shell.
-    pub guard_reason_marker: MethodLibrarySafeMarker,
+    /// Stable guard anchor.
+    pub guard_ref: DefinitionUseBoundaryGuardRef,
+    /// Protected method-definition anchor.
+    pub protected_definition_ref: MethodAssetDefinitionRef,
+    /// Protected formal-version anchor.
+    pub protected_formal_version_ref: FormalMethodAssetVersionRef,
+    /// Controlled consumption-context anchor.
+    pub consumption_context_ref: ConsumptionContextRef,
+    /// Related downstream-boundary anchor.
+    pub boundary_ref: DownstreamConsumptionBoundaryRef,
+    /// Safe guard-reason marker wrapper.
+    pub guard_reason_ref: DefinitionUseGuardReasonRef,
     /// The current judgement state.
-    pub state: DefinitionUseBoundaryGuardState,
+    pub guard_state: DefinitionUseBoundaryGuardState,
 }
 
 impl DefinitionUseBoundaryGuard {
-    /// Builds the current-boundary guard shell.
-    pub fn try_new(
-        guard_ref: Option<MethodLibraryTypedBoundaryRef>,
-        protected_definition_ref: Option<MethodLibraryTypedBoundaryRef>,
-        protected_formal_version_ref: Option<MethodLibraryTypedBoundaryRef>,
-        consumption_context_ref: Option<MethodLibraryTypedBoundaryRef>,
-        boundary_ref: Option<MethodLibraryTypedBoundaryRef>,
-        guard_reason_marker: Option<MethodLibrarySafeMarker>,
-        state: DefinitionUseBoundaryGuardState,
-    ) -> Result<Self, MethodLibraryDomainError> {
-        Ok(Self {
-            guard_ref: required_ref(guard_ref)?,
-            protected_definition_ref: required_ref(protected_definition_ref)?,
-            protected_formal_version_ref: required_ref(protected_formal_version_ref)?,
-            consumption_context_ref: required_ref(consumption_context_ref)?,
-            boundary_ref: required_ref(boundary_ref)?,
-            guard_reason_marker: required_marker(guard_reason_marker)?,
-            state,
-        })
-    }
-
-    /// Evaluates a violation candidate without introducing later-boundary state.
-    pub fn evaluate_violation_candidate(
-        &self,
-        safe_reason_marker: Option<MethodLibrarySafeMarker>,
-        raw_body_candidate: bool,
-    ) -> Result<DefinitionUseBoundaryGuardState, MethodLibraryDomainError> {
-        self.state
-            .record_violation(safe_reason_marker.is_some(), raw_body_candidate)?
-            .assert_not_rejected()
-    }
-}
-
-/// Judgement state for `DownstreamConsumptionBoundary`.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum DownstreamConsumptionBoundaryState {
-    /// The boundary is registered and readable.
-    Registered,
-    /// The boundary is readable but constrained.
-    Constrained,
-    /// The boundary is currently unavailable.
-    Unavailable,
-}
-
-impl DownstreamConsumptionBoundaryState {
-    /// Creates the first persisted boundary state from the registration branch.
-    pub const fn register(constrained: bool) -> Self {
-        if constrained {
-            Self::Constrained
-        } else {
-            Self::Registered
+    /// Creates a monitoring guard for formal consumption.
+    pub fn protect_formal_consumption(
+        guard_ref: DefinitionUseBoundaryGuardRef,
+        definition_ref: MethodAssetDefinitionRef,
+        formal_version_ref: FormalMethodAssetVersionRef,
+        boundary_ref: DownstreamConsumptionBoundaryRef,
+        consumption_context_ref: ConsumptionContextRef,
+        guard_reason_ref: DefinitionUseGuardReasonRef,
+    ) -> Self {
+        Self {
+            guard_ref,
+            protected_definition_ref: definition_ref,
+            protected_formal_version_ref: formal_version_ref,
+            consumption_context_ref,
+            boundary_ref,
+            guard_reason_ref,
+            guard_state: DefinitionUseBoundaryGuardState::Monitoring,
         }
     }
 
-    /// Applies the current-boundary adjustment branch.
-    pub const fn adjust(self, next: Self) -> Self {
-        let _ = self;
-        next
+    /// Confirms the material is anchored to the protected formal version.
+    pub fn assert_material_uses_formal_version(
+        &self,
+        formal_version_ref: &FormalMethodAssetVersionRef,
+    ) -> Result<(), MethodLibraryDomainError> {
+        if &self.protected_formal_version_ref == formal_version_ref {
+            Ok(())
+        } else {
+            Err(MethodLibraryDomainError::invariant_violation())
+        }
+    }
+
+    /// Confirms the consumption context remains within the guard boundary.
+    pub fn assert_context_within_boundary(
+        &self,
+        consumption_context_ref: &ConsumptionContextRef,
+    ) -> Result<(), MethodLibraryDomainError> {
+        if &self.consumption_context_ref == consumption_context_ref {
+            Ok(())
+        } else {
+            Err(MethodLibraryDomainError::invariant_violation())
+        }
+    }
+
+    /// Records a safe violation marker.
+    pub fn mark_violation(
+        &mut self,
+        violation_ref: MethodLibrarySafeMarker,
+    ) -> Result<(), MethodLibraryDomainError> {
+        if !violation_ref.is_public_safe() {
+            return Err(MethodLibraryDomainError::policy_rejected());
+        }
+        self.guard_state = DefinitionUseBoundaryGuardState::ViolationRecorded;
+        self.guard_reason_ref = DefinitionUseGuardReasonRef::new(violation_ref);
+        Ok(())
+    }
+
+    /// Rejects a downstream writeback attempt with a safe reason source.
+    pub fn reject_downstream_definition_write(
+        &mut self,
+        write_attempt_ref: MethodLibraryTypedBoundaryRef,
+        reason_ref: DefinitionUseGuardReasonRef,
+    ) -> Result<(), MethodLibraryDomainError> {
+        let kind = write_attempt_ref.kind();
+        let next_state = match kind {
+            method_library_contracts::MethodLibraryTypedBoundaryRefKind::MethodAssetDefinition
+            | method_library_contracts::MethodLibraryTypedBoundaryRefKind::FormalMethodAssetVersion => {
+                DefinitionUseBoundaryGuardState::RejectedCandidate
+            }
+            _ => DefinitionUseBoundaryGuardState::ManualReviewRequired,
+        };
+
+        if !reason_ref.as_safe_marker().is_public_safe() {
+            return Err(MethodLibraryDomainError::policy_rejected());
+        }
+
+        self.guard_state = next_state;
+        self.guard_reason_ref = reason_ref;
+        Ok(())
     }
 }
 
 /// Shared pure-domain shell for a downstream consumption boundary.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DownstreamConsumptionBoundary {
-    /// The opaque boundary anchor.
-    pub boundary_ref: MethodLibraryTypedBoundaryRef,
-    /// The controlled consumption-context anchor.
-    pub consumption_context_ref: MethodLibraryTypedBoundaryRef,
-    /// The safe reason marker carried by the boundary shell.
-    pub boundary_reason_marker: MethodLibrarySafeMarker,
+    /// Stable boundary anchor.
+    pub boundary_ref: DownstreamConsumptionBoundaryRef,
+    /// Controlled consumption-context anchor.
+    pub consumption_context_ref: ConsumptionContextRef,
+    /// Controlled formal-version state requirement.
+    pub formal_version_requirement: FormalVersionRequirement,
+    /// Allowed downstream use families.
+    pub allowed_use_kind_set: MethodAssetAllowedUseKindSet,
+    /// Forbidden downstream truth writeback families.
+    pub forbidden_write_kind_set: DownstreamForbiddenWriteKindSet,
+    /// Allowed material scope.
+    pub material_scope_ref: MethodAssetConsumptionMaterialScopeRef,
+    /// Safe boundary-reason marker wrapper.
+    pub boundary_reason_ref: ConsumptionBoundaryReasonRef,
     /// The current boundary judgement state.
-    pub state: DownstreamConsumptionBoundaryState,
+    pub boundary_state: DownstreamConsumptionBoundaryState,
 }
 
 impl DownstreamConsumptionBoundary {
-    /// Builds the current-boundary consumption shell.
-    pub fn try_new(
-        boundary_ref: Option<MethodLibraryTypedBoundaryRef>,
-        consumption_context_ref: Option<MethodLibraryTypedBoundaryRef>,
-        boundary_reason_marker: Option<MethodLibrarySafeMarker>,
-        state: DownstreamConsumptionBoundaryState,
+    /// Creates a registered downstream boundary for a controlled consumption context.
+    pub fn for_consumption_context(
+        boundary_ref: DownstreamConsumptionBoundaryRef,
+        consumption_context_ref: ConsumptionContextRef,
+        formal_version_requirement: FormalVersionRequirement,
+        allowed_use_kind_set: MethodAssetAllowedUseKindSet,
+        forbidden_write_kind_set: DownstreamForbiddenWriteKindSet,
+        material_scope_ref: MethodAssetConsumptionMaterialScopeRef,
+        boundary_reason_ref: ConsumptionBoundaryReasonRef,
     ) -> Result<Self, MethodLibraryDomainError> {
+        if allowed_use_kind_set.is_empty() || forbidden_write_kind_set.is_empty() {
+            return Err(MethodLibraryDomainError::invariant_violation());
+        }
+
         Ok(Self {
-            boundary_ref: required_ref(boundary_ref)?,
-            consumption_context_ref: required_ref(consumption_context_ref)?,
-            boundary_reason_marker: required_marker(boundary_reason_marker)?,
-            state,
+            boundary_ref,
+            consumption_context_ref,
+            formal_version_requirement,
+            allowed_use_kind_set,
+            forbidden_write_kind_set,
+            material_scope_ref,
+            boundary_reason_ref,
+            boundary_state: DownstreamConsumptionBoundaryState::Registered,
         })
     }
 
-    /// Applies a legal current-boundary state adjustment.
-    pub fn adjust(mut self, next: DownstreamConsumptionBoundaryState) -> Self {
-        self.state = self.state.adjust(next);
-        self
+    /// Confirms the consumption context is the one registered by the boundary.
+    pub fn assert_context_allowed(
+        &self,
+        consumption_context_ref: &ConsumptionContextRef,
+    ) -> Result<(), MethodLibraryDomainError> {
+        if &self.consumption_context_ref == consumption_context_ref {
+            Ok(())
+        } else {
+            Err(MethodLibraryDomainError::policy_rejected())
+        }
+    }
+
+    /// Confirms the use kind is allowed by the current boundary.
+    pub fn assert_use_kind_allowed(
+        &self,
+        use_kind: MethodAssetAllowedUseKind,
+    ) -> Result<(), MethodLibraryDomainError> {
+        if self.allowed_use_kind_set.allowed_kinds.contains(&use_kind) {
+            Ok(())
+        } else {
+            Err(MethodLibraryDomainError::policy_rejected())
+        }
+    }
+
+    /// Rejects a downstream writeback family that the boundary forbids.
+    pub fn reject_forbidden_write(
+        &self,
+        forbidden_write_kind_set: &DownstreamForbiddenWriteKindSet,
+    ) -> Result<(), MethodLibraryDomainError> {
+        if forbidden_write_kind_set
+            .forbidden_kinds
+            .iter()
+            .any(|kind| self.forbidden_write_kind_set.forbidden_kinds.contains(kind))
+        {
+            Err(MethodLibraryDomainError::policy_rejected())
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Moves the boundary into a constrained state with a safe reason.
+    pub fn scope_limited(
+        &mut self,
+        reason_ref: ConsumptionBoundaryReasonRef,
+    ) -> Result<(), MethodLibraryDomainError> {
+        if !reason_ref.as_safe_marker().is_public_safe() {
+            return Err(MethodLibraryDomainError::policy_rejected());
+        }
+        self.boundary_reason_ref = reason_ref;
+        self.boundary_state = DownstreamConsumptionBoundaryState::Constrained;
+        Ok(())
+    }
+
+    /// Moves the boundary into an unavailable state with a safe reason.
+    pub fn unavailable(
+        &mut self,
+        reason_ref: ConsumptionBoundaryReasonRef,
+    ) -> Result<(), MethodLibraryDomainError> {
+        if !reason_ref.as_safe_marker().is_public_safe() {
+            return Err(MethodLibraryDomainError::policy_rejected());
+        }
+        self.boundary_reason_ref = reason_ref;
+        self.boundary_state = DownstreamConsumptionBoundaryState::Unavailable;
+        Ok(())
     }
 }
 
