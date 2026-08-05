@@ -48,6 +48,34 @@ pub enum MethodLibraryTypedBoundaryRefKind {
     MethodAssetDistributionRef,
     /// Distribution context anchor.
     DistributionContextRef,
+    /// Stable distribution identity closed for `commit-05-b`.
+    MethodAssetDistribution,
+    /// Stable distribution-context identity closed for `commit-05-b`.
+    DistributionContext,
+    /// Read-only relation anchor identity.
+    MethodAssetRelation,
+    /// Distribution-specific event-candidate assembly identity.
+    MethodAssetEventCandidateAssembly,
+    /// Mapper-owned degraded-decision identity.
+    MethodAssetDegradedDecision,
+    /// Body-free infrastructure diagnostic identity.
+    MethodAssetInfraSafeDiagnostic,
+    /// Adapter availability-state identity.
+    MethodAssetAdapterAvailabilityState,
+    /// Runtime-precheck adapter-slot identity.
+    MethodAssetAdapterSlot,
+    /// Publisher binding-state identity.
+    MethodAssetPublisherBindingState,
+    /// Handoff binding-state identity.
+    MethodAssetHandoffBindingState,
+    /// Body-free handoff-target identity.
+    MethodAssetHandoffTarget,
+    /// Collaboration target-registry scope identity.
+    MethodAssetTargetRegistryScope,
+    /// Stored publication-outcome identity.
+    MethodAssetPublicationOutcome,
+    /// Stored handoff-marker identity.
+    MethodAssetHandoffMarker,
     /// External source anchor.
     ExternalSourceRef,
     /// Accepted external summary anchor.
@@ -112,6 +140,12 @@ pub enum MethodLibraryTypedBoundaryRefKind {
     FormalMethodAssetVersionSupersedeIntent,
     /// Formal method-version retire intent selector.
     FormalMethodAssetVersionRetireIntent,
+    /// Distribution-ref prepare intent selector.
+    MethodAssetDistributionRefPrepareIntent,
+    /// Distribution-context adjust intent selector.
+    MethodAssetDistributionContextAdjustIntent,
+    /// Distribution-availability mark intent selector.
+    MethodAssetDistributionAvailabilityMarkIntent,
 }
 
 macro_rules! named_typed_boundary_ref {
@@ -244,6 +278,76 @@ named_typed_boundary_ref!(
     MethodAssetConsumptionMaterialScopeRef,
     MethodAssetConsumptionMaterialScope,
     "Named typed boundary ref for a method asset consumption material scope."
+);
+named_typed_boundary_ref!(
+    MethodAssetDistributionRef,
+    MethodAssetDistribution,
+    "Named typed boundary ref for a method asset distribution."
+);
+named_typed_boundary_ref!(
+    DistributionContextRef,
+    DistributionContext,
+    "Named typed boundary ref for a distribution context."
+);
+named_typed_boundary_ref!(
+    MethodAssetRelationRef,
+    MethodAssetRelation,
+    "Named typed boundary ref for a read-only method asset relation anchor."
+);
+named_typed_boundary_ref!(
+    MethodAssetEventCandidateAssemblyRef,
+    MethodAssetEventCandidateAssembly,
+    "Named typed boundary ref for a distribution event-candidate assembly."
+);
+named_typed_boundary_ref!(
+    MethodAssetDegradedDecisionRef,
+    MethodAssetDegradedDecision,
+    "Named typed boundary ref for a mapper-owned degraded decision."
+);
+named_typed_boundary_ref!(
+    MethodAssetInfraSafeDiagnosticRef,
+    MethodAssetInfraSafeDiagnostic,
+    "Named typed boundary ref for a body-free infrastructure diagnostic."
+);
+named_typed_boundary_ref!(
+    MethodAssetAdapterAvailabilityStateRef,
+    MethodAssetAdapterAvailabilityState,
+    "Named typed boundary ref for adapter availability state."
+);
+named_typed_boundary_ref!(
+    MethodAssetAdapterSlotRef,
+    MethodAssetAdapterSlot,
+    "Named typed boundary ref for an adapter slot."
+);
+named_typed_boundary_ref!(
+    MethodAssetPublisherBindingStateRef,
+    MethodAssetPublisherBindingState,
+    "Named typed boundary ref for publisher binding state."
+);
+named_typed_boundary_ref!(
+    MethodAssetHandoffBindingStateRef,
+    MethodAssetHandoffBindingState,
+    "Named typed boundary ref for handoff binding state."
+);
+named_typed_boundary_ref!(
+    MethodAssetHandoffTargetRef,
+    MethodAssetHandoffTarget,
+    "Named typed boundary ref for a body-free handoff target."
+);
+named_typed_boundary_ref!(
+    MethodAssetTargetRegistryScopeRef,
+    MethodAssetTargetRegistryScope,
+    "Named typed boundary ref for a target-registry scope."
+);
+named_typed_boundary_ref!(
+    MethodAssetPublicationOutcomeRef,
+    MethodAssetPublicationOutcome,
+    "Named typed boundary ref for a stored publication outcome."
+);
+named_typed_boundary_ref!(
+    MethodAssetHandoffMarkerRef,
+    MethodAssetHandoffMarker,
+    "Named typed boundary ref for a stored handoff marker."
 );
 named_typed_boundary_ref!(
     CatalogScopeRef,

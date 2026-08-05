@@ -1,6 +1,7 @@
 //! Infrastructure skeleton for the method library workspace.
 
 pub mod definition_catalog;
+pub mod distribution_handoff;
 pub mod formalization_version;
 pub mod config {}
 pub mod runtime_builder {}
@@ -17,6 +18,17 @@ pub use definition_catalog::{
     InMemoryMethodAssetCatalogEntryRepository, InMemoryMethodAssetDefinitionCatalogRuntime,
     InMemoryMethodAssetDefinitionCatalogSupportRefFactory, InMemoryMethodAssetDefinitionRepository,
     InMemoryMethodAssetStoredOperationResultRepository, InMemoryUnitOfWorkFactory,
+};
+pub use distribution_handoff::{
+    InMemoryDistributionHandoffStoredOperationResultRepository,
+    InMemoryDistributionHandoffUnitOfWorkFactory, InMemoryDistributionReadMaterialBuilderPort,
+    InMemoryMethodAssetAdapterAvailabilityPort, InMemoryMethodAssetCollaborationHandoffPort,
+    InMemoryMethodAssetCollaborationTargetRegistryPort,
+    InMemoryMethodAssetDistributionHandoffRuntime,
+    InMemoryMethodAssetDistributionHandoffSupportRefFactory,
+    InMemoryMethodAssetDistributionRepository, InMemoryMethodAssetEventCandidateAssemblyRepository,
+    InMemoryMethodAssetEventCandidatePublisherPort, InMemoryMethodAssetHandoffMarkerRepository,
+    InMemoryMethodAssetPublicationOutcomeRepository, InMemoryMethodAssetRelationRepository,
 };
 pub use formalization_version::{
     InMemoryFormalMethodAssetVersionRepository, InMemoryFormalizationBasisSummaryRepository,

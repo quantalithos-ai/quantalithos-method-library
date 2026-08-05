@@ -3,6 +3,7 @@
 pub mod commands;
 pub mod consumption;
 pub mod definition_catalog;
+pub mod distribution;
 pub mod errors;
 pub mod events;
 pub mod fixtures;
@@ -28,6 +29,11 @@ pub use definition_catalog::{
     MethodAssetCatalogEntryRefSet, MethodAssetCatalogEntryStatus, MethodAssetDefinitionKind,
     MethodAssetDefinitionSummary, MethodAssetIdentityKey,
 };
+pub use distribution::{
+    MethodAssetAdapterSlotRefSet, MethodAssetDistributionAdjustmentReasonRef,
+    MethodAssetEventCandidateReasonRef, MethodAssetHandoffBoundaryMarkerRef,
+    MethodAssetHandoffTargetRefSet, MethodAssetPublicationBoundaryMarkerRef,
+};
 pub use events::MethodLibraryEventShell;
 pub use formalization::{
     ForbiddenFormalizationTriggerKind, ForbiddenFormalizationTriggerKindSet,
@@ -40,17 +46,22 @@ pub use formalization::{
 pub use jobs::{MethodLibraryJobShell, MethodLibraryOperationsJobKind};
 pub use queries::MethodLibraryQueryShell;
 pub use refs::{
-    CatalogScopeRef, ConsumptionContextRef, DefinitionUseBoundaryGuardRef,
+    CatalogScopeRef, ConsumptionContextRef, DefinitionUseBoundaryGuardRef, DistributionContextRef,
     DownstreamConsumptionBoundaryRef, ExternalSourceSummaryRef, FormalMethodAssetVersionRef,
     FormalizationBasisSummaryRef, FormalizationEligibilityRejectionRef,
     FormalizationEligibilityRuleRef, FormalizationStateRef, GovernanceBasisRef,
-    MethodAssetAcceptedOperationSummaryRef, MethodAssetApiEntryContextRef,
-    MethodAssetApplicationDispatchRef, MethodAssetCatalogEntryRef,
-    MethodAssetConsumptionMaterialCursorRef, MethodAssetConsumptionMaterialRef,
-    MethodAssetConsumptionMaterialScopeRef, MethodAssetDedupScopeRef, MethodAssetDefinitionRef,
-    MethodAssetEffectSummaryRef, MethodAssetIdempotencyKeyRef, MethodAssetOperationContextRef,
-    MethodAssetOperationDigestRef, MethodAssetReplayMarkerRef, MethodAssetSafeIgnoreReasonRef,
-    MethodAssetSafeRejectReasonRef, MethodAssetStoredOperationResultRef,
+    MethodAssetAcceptedOperationSummaryRef, MethodAssetAdapterAvailabilityStateRef,
+    MethodAssetAdapterSlotRef, MethodAssetApiEntryContextRef, MethodAssetApplicationDispatchRef,
+    MethodAssetCatalogEntryRef, MethodAssetConsumptionMaterialCursorRef,
+    MethodAssetConsumptionMaterialRef, MethodAssetConsumptionMaterialScopeRef,
+    MethodAssetDedupScopeRef, MethodAssetDefinitionRef, MethodAssetDegradedDecisionRef,
+    MethodAssetDistributionRef, MethodAssetEffectSummaryRef, MethodAssetEventCandidateAssemblyRef,
+    MethodAssetHandoffBindingStateRef, MethodAssetHandoffMarkerRef, MethodAssetHandoffTargetRef,
+    MethodAssetIdempotencyKeyRef, MethodAssetInfraSafeDiagnosticRef,
+    MethodAssetOperationContextRef, MethodAssetOperationDigestRef,
+    MethodAssetPublicationOutcomeRef, MethodAssetPublisherBindingStateRef, MethodAssetRelationRef,
+    MethodAssetReplayMarkerRef, MethodAssetSafeIgnoreReasonRef, MethodAssetSafeRejectReasonRef,
+    MethodAssetStoredOperationResultRef, MethodAssetTargetRegistryScopeRef,
     MethodLibraryTypedBoundaryRef, MethodLibraryTypedBoundaryRefKind,
     MethodLibraryTypedBoundaryRefKindMismatch,
 };

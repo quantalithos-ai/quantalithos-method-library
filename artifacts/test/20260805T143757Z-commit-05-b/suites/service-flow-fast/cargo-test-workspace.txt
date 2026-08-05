@@ -1,0 +1,260 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running unittests src/lib.rs (target/debug/deps/method_library_api-85d8ee40bc6af182)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/definition_catalog_entry.rs (target/debug/deps/definition_catalog_entry-e797980a47b27366)
+
+running 1 test
+test api_entry_creates_context_and_delegates_to_facade ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/formalization_version_entry.rs (target/debug/deps/formalization_version_entry-c4fdcda91d21073e)
+
+running 1 test
+test api_entry_creates_context_and_delegates_to_formalization_facade ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/method_library_application-ac9153c7a1893511)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/definition_catalog_foundation.rs (target/debug/deps/definition_catalog_foundation-a049fd4fb7514953)
+
+running 3 tests
+test application_ports_and_facade_surfaces_are_object_safe ... ok
+test current_boundary_selectors_and_result_kinds_are_closed ... ok
+test effect_summary_ref_set_keeps_first_insertion_order_after_dedup ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/formalization_version_foundation.rs (target/debug/deps/formalization_version_foundation-1c2db06f89b0a3fc)
+
+running 3 tests
+test formalization_version_surfaces_are_object_safe ... ok
+test formalization_version_selectors_and_commit_observations_are_closed ... ok
+test evaluate_flow_maps_save_version_conflict_to_rejected_surface ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/method_library_contracts-e91984059c5ee1cd)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/consumption_contracts.rs (target/debug/deps/consumption_contracts-017e6f40230271bd)
+
+running 8 tests
+test availability_marker_copies_only_exact_target_state ... ok
+test consumption_ref_kinds_are_stable ... ok
+test consumption_wrappers_reject_wrong_kinds ... ok
+test helper_refs_and_sets_roundtrip_current_boundary_values ... ok
+test deterministic_sets_dedup_and_preserve_first_seen_order ... ok
+test consumption_state_and_marker_labels_are_exact ... ok
+test requirement_and_summary_carriers_keep_exact_fields ... ok
+test safe_reason_wrappers_keep_safe_markers ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/contract_foundation_roundtrip.rs (target/debug/deps/contract_foundation_roundtrip-b78246b42d5df244)
+
+running 3 tests
+test capability_and_job_kind_are_stable ... ok
+test typed_boundary_ref_kind_is_stable ... ok
+test command_query_event_job_and_view_shells_roundtrip ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/definition_catalog_contracts.rs (target/debug/deps/definition_catalog_contracts-c7d2191ecbcc9031)
+
+running 5 tests
+test applicability_summary_dedups_context_refs_in_first_seen_order ... ok
+test definition_catalog_ref_kinds_are_stable ... ok
+test named_definition_catalog_wrappers_reject_wrong_kinds ... ok
+test identity_key_and_catalog_classification_preserve_exact_scope_fields ... ok
+test ref_sets_dedup_and_preserve_first_seen_order ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/formalization_contracts.rs (target/debug/deps/formalization_contracts-3ce6b095abd1704f)
+
+running 8 tests
+test basis_and_trigger_sets_are_canonically_deduped ... ok
+test formalization_basis_safe_summary_roundtrips_existing_support_refs ... ok
+test formalization_ref_sets_dedup_and_preserve_first_seen_order ... ok
+test formalization_selector_intent_labels_are_exact ... ok
+test formalization_ref_kinds_are_stable ... ok
+test formalization_state_kind_labels_are_exact ... ok
+test governance_requirement_required_implies_allowed ... ok
+test named_formalization_wrappers_reject_wrong_kinds ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/method_library_domain-315841717f63ca89)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/consumption_material.rs (target/debug/deps/consumption_material-80dfdc2f4cd9a406)
+
+running 11 tests
+test boundary_registration_requires_non_empty_allowed_and_forbidden_sets ... ok
+test boundary_constraints_and_writeback_rejection_stay_body_free ... ok
+test active_only_requirement_blocks_superseded_and_retired_versions ... ok
+test guard_rejects_or_manual_reviews_writeback_by_attempt_kind ... ok
+test guard_initializes_monitoring_and_records_safe_violation ... ok
+test material_applies_copy_only_availability_marker ... ok
+test material_factory_initializes_prepared_without_downstream_truth ... ok
+test material_invariants_reject_wrong_formal_version_context_or_boundary ... ok
+test material_mark_stale_accepts_boundary_reason_when_no_marker_was_loaded ... ok
+test material_mark_stale_preserves_copy_only_marker_shape ... ok
+test material_mark_stale_rejects_missing_formal_source_closure ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/domain_foundation.rs (target/debug/deps/domain_foundation-cf84c9b4819f5ceb)
+
+running 3 tests
+test consistency_and_relation_judgements_reject_illegal_follow_up ... ok
+test external_body_rule_enforces_body_free_redline_and_invariants ... ok
+test shared_foundation_shells_require_current_boundary_typed_carriers ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/formal_method_version.rs (target/debug/deps/formal_method_version-9b93edc356bebc88)
+
+running 6 tests
+test basis_summary_accepts_matching_safe_sources ... ok
+test formal_version_guards_preserve_active_and_block_retired_or_superseded_reuse ... ok
+test basis_summary_rejects_missing_kind_compatible_source ... ok
+test formal_version_requires_stable_definition_and_state_identity ... ok
+test formalization_state_can_block_and_recover_before_establishment ... ok
+test formalization_state_rejects_invalid_transitions_and_silent_overwrite ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/method_asset_definition.rs (target/debug/deps/method_asset_definition-a46062502e6a4836)
+
+running 11 tests
+test catalog_create_requires_scope_consistency_and_sets_visible ... ok
+test catalog_entry_deprecation_sets_status_without_rewriting_identity ... ok
+test catalog_reclassify_updates_scope_classification_and_applicability_together ... ok
+test catalog_reclassify_rejects_non_visible_or_scope_mismatch ... ok
+test catalog_retire_requires_visible_and_preserves_identity ... ok
+test definition_create_initializes_active_lifecycle ... ok
+test definition_body_free_requires_no_body_marker ... ok
+test definition_adjust_preserves_active_and_replaces_summary_and_sources ... ok
+test definition_links_catalog_entries_and_source_summaries_without_duplicates ... ok
+test retired_definition_rejects_adjust_and_retire ... ok
+test retired_catalog_entry_rejects_deprecation ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/method_library_infra-72543cbc990e72e7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/definition_catalog_runtime.rs (target/debug/deps/definition_catalog_runtime-9f7c6f4788c65e65)
+
+running 3 tests
+test rollback_hides_directly_staged_definition_write ... ok
+test definition_lifecycle_persists_and_duplicate_replay_does_not_rerun_mutation ... ok
+test catalog_status_persists_visible_to_retired_and_replays_duplicates ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/distribution_handoff_runtime.rs (target/debug/deps/distribution_handoff_runtime-88d079910008bd0c)
+
+running 15 tests
+test availability_mark_requires_mapper_owned_degraded_decision ... ok
+test adjust_requires_loaded_distribution_version_and_preserves_truth_on_conflict ... ok
+test degraded_adapter_maps_to_blocked_outcome_with_marker_and_diagnostic ... ok
+test blocked_target_maps_to_blocked_outcome_without_delivery ... ok
+test disabled_adapter_persists_blocked_outcome_with_port_diagnostic ... ok
+test disabled_target_does_not_call_publisher_or_handoff ... ok
+test prepare_without_seam_has_no_candidate_or_post_commit_outcome ... ok
+test handoff_outcome_persistence_failure_stops_later_targets_without_rollback ... ok
+test publication_failure_does_not_roll_back_accepted_distribution ... ok
+test selector_source_mismatch_is_safe_rejected_before_builder_or_mutation ... ok
+test prepare_with_seam_commits_candidate_and_duplicate_does_not_rerun_seams ... ok
+test publication_outcome_persistence_failure_stops_handoff_without_rolling_back_truth ... ok
+test seam_source_is_part_of_digest_and_commit_unknown_replays_post_commit_once ... ok
+test unavailable_target_maps_to_unavailable_outcome_without_delivery ... ok
+test unavailable_adapter_maps_to_unavailable_outcome_without_delivery ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/formalization_version_runtime.rs (target/debug/deps/formalization_version_runtime-8ea5ccbdeee0b7ef)
+
+running 3 tests
+test evaluate_replays_duplicate_without_rerunning_state_mutation ... ok
+test duplicate_lookup_integrity_failure_returns_conflict_surface ... ok
+test retire_formal_version_reads_back_after_commit_unknown_without_future_owner_precheck ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/method_library_jobs-41504b4517272882)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/method_library_worker-f514c669c425db1e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests method_library_api
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests method_library_application
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests method_library_contracts
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests method_library_domain
+
+running 2 tests
+test crates/domain/src/method_asset_definition.rs - method_asset_definition::MethodAssetCatalogEntry::mark_deprecated (line 251) - compile fail ... ok
+test crates/domain/src/method_asset_definition.rs - method_asset_definition::MethodAssetCatalogEntry::mark_deprecated (line 243) - compile fail ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+   Doc-tests method_library_infra
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests method_library_jobs
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests method_library_worker
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

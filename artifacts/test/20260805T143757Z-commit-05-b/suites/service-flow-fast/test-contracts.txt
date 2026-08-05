@@ -1,0 +1,60 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running unittests src/lib.rs (target/debug/deps/method_library_contracts-e91984059c5ee1cd)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/consumption_contracts.rs (target/debug/deps/consumption_contracts-017e6f40230271bd)
+
+running 8 tests
+test consumption_ref_kinds_are_stable ... ok
+test availability_marker_copies_only_exact_target_state ... ok
+test consumption_wrappers_reject_wrong_kinds ... ok
+test helper_refs_and_sets_roundtrip_current_boundary_values ... ok
+test requirement_and_summary_carriers_keep_exact_fields ... ok
+test safe_reason_wrappers_keep_safe_markers ... ok
+test deterministic_sets_dedup_and_preserve_first_seen_order ... ok
+test consumption_state_and_marker_labels_are_exact ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/contract_foundation_roundtrip.rs (target/debug/deps/contract_foundation_roundtrip-b78246b42d5df244)
+
+running 3 tests
+test capability_and_job_kind_are_stable ... ok
+test typed_boundary_ref_kind_is_stable ... ok
+test command_query_event_job_and_view_shells_roundtrip ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/definition_catalog_contracts.rs (target/debug/deps/definition_catalog_contracts-c7d2191ecbcc9031)
+
+running 5 tests
+test applicability_summary_dedups_context_refs_in_first_seen_order ... ok
+test definition_catalog_ref_kinds_are_stable ... ok
+test identity_key_and_catalog_classification_preserve_exact_scope_fields ... ok
+test named_definition_catalog_wrappers_reject_wrong_kinds ... ok
+test ref_sets_dedup_and_preserve_first_seen_order ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/formalization_contracts.rs (target/debug/deps/formalization_contracts-3ce6b095abd1704f)
+
+running 8 tests
+test formalization_basis_safe_summary_roundtrips_existing_support_refs ... ok
+test basis_and_trigger_sets_are_canonically_deduped ... ok
+test formalization_selector_intent_labels_are_exact ... ok
+test formalization_ref_kinds_are_stable ... ok
+test formalization_state_kind_labels_are_exact ... ok
+test formalization_ref_sets_dedup_and_preserve_first_seen_order ... ok
+test governance_requirement_required_implies_allowed ... ok
+test named_formalization_wrappers_reject_wrong_kinds ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests method_library_contracts
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

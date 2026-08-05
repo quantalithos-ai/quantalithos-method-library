@@ -1,0 +1,4 @@
+Dry run OK
+run_id=20260805T143757Z-commit-05-b
+artifact_root=artifacts/test/20260805T143757Z-commit-05-b
+report_root=reports/runs/20260805T143757Z-commit-05-b

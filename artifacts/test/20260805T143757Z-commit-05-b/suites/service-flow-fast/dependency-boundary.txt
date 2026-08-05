@@ -1,0 +1,52 @@
+method-library-api v0.1.0 (/home/aris/Projects/quantalithos-method-library/crates/api)
+├── method-library-application v0.1.0 (/home/aris/Projects/quantalithos-method-library/crates/application)
+│   ├── method-library-contracts v0.1.0 (/home/aris/Projects/quantalithos-method-library/crates/contracts)
+│   │   ├── core-contracts v0.1.0 (/home/aris/Projects/quantalithos-core/crates/contracts)
+│   │   │   ├── serde v1.0.228
+│   │   │   │   ├── serde_core v1.0.228
+│   │   │   │   └── serde_derive v1.0.228 (proc-macro)
+│   │   │   │       ├── proc-macro2 v1.0.106
+│   │   │   │       │   └── unicode-ident v1.0.24
+│   │   │   │       ├── quote v1.0.46
+│   │   │   │       │   └── proc-macro2 v1.0.106 (*)
+│   │   │   │       └── syn v2.0.118
+│   │   │   │           ├── proc-macro2 v1.0.106 (*)
+│   │   │   │           ├── quote v1.0.46 (*)
+│   │   │   │           └── unicode-ident v1.0.24
+│   │   │   ├── serde_json v1.0.150
+│   │   │   │   ├── itoa v1.0.18
+│   │   │   │   ├── memchr v2.8.2
+│   │   │   │   ├── serde_core v1.0.228
+│   │   │   │   └── zmij v1.0.21
+│   │   │   └── thiserror v2.0.18
+│   │   │       └── thiserror-impl v2.0.18 (proc-macro)
+│   │   │           ├── proc-macro2 v1.0.106 (*)
+│   │   │           ├── quote v1.0.46 (*)
+│   │   │           └── syn v2.0.118 (*)
+│   │   ├── serde v1.0.228 (*)
+│   │   └── serde_json v1.0.150 (*)
+│   └── method-library-domain v0.1.0 (/home/aris/Projects/quantalithos-method-library/crates/domain)
+│       └── method-library-contracts v0.1.0 (/home/aris/Projects/quantalithos-method-library/crates/contracts) (*)
+├── method-library-contracts v0.1.0 (/home/aris/Projects/quantalithos-method-library/crates/contracts) (*)
+└── method-library-infra v0.1.0 (/home/aris/Projects/quantalithos-method-library/crates/infra)
+    ├── method-library-application v0.1.0 (/home/aris/Projects/quantalithos-method-library/crates/application) (*)
+    ├── method-library-contracts v0.1.0 (/home/aris/Projects/quantalithos-method-library/crates/contracts) (*)
+    └── method-library-domain v0.1.0 (/home/aris/Projects/quantalithos-method-library/crates/domain) (*)
+
+method-library-application v0.1.0 (/home/aris/Projects/quantalithos-method-library/crates/application) (*)
+
+method-library-contracts v0.1.0 (/home/aris/Projects/quantalithos-method-library/crates/contracts) (*)
+
+method-library-domain v0.1.0 (/home/aris/Projects/quantalithos-method-library/crates/domain) (*)
+
+method-library-infra v0.1.0 (/home/aris/Projects/quantalithos-method-library/crates/infra) (*)
+
+method-library-jobs v0.1.0 (/home/aris/Projects/quantalithos-method-library/crates/jobs)
+├── method-library-application v0.1.0 (/home/aris/Projects/quantalithos-method-library/crates/application) (*)
+├── method-library-contracts v0.1.0 (/home/aris/Projects/quantalithos-method-library/crates/contracts) (*)
+└── method-library-infra v0.1.0 (/home/aris/Projects/quantalithos-method-library/crates/infra) (*)
+
+method-library-worker v0.1.0 (/home/aris/Projects/quantalithos-method-library/crates/worker)
+├── method-library-application v0.1.0 (/home/aris/Projects/quantalithos-method-library/crates/application) (*)
+├── method-library-contracts v0.1.0 (/home/aris/Projects/quantalithos-method-library/crates/contracts) (*)
+└── method-library-infra v0.1.0 (/home/aris/Projects/quantalithos-method-library/crates/infra) (*)

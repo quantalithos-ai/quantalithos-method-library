@@ -1,6 +1,7 @@
 //! Definition/catalog accepted-service surface for `commit-03-b`.
 
 pub mod definition_catalog;
+pub mod distribution_handoff;
 pub mod formalization_version;
 pub mod idempotency;
 pub mod ports;
@@ -23,6 +24,7 @@ pub use definition_catalog::{
     RetireDefinitionCommandSource, RetireMethodAssetCatalogEntryInput,
     RetireMethodAssetDefinitionInput, Versioned, VersionedRef,
 };
+pub use distribution_handoff::*;
 pub use formalization_version::{
     DefaultMethodAssetFormalizationVersionCommandFacade,
     EstablishFormalMethodAssetVersionCommandSource, EstablishFormalMethodAssetVersionInput,

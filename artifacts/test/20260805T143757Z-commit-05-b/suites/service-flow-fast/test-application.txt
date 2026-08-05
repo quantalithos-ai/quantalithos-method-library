@@ -1,0 +1,30 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running unittests src/lib.rs (target/debug/deps/method_library_application-ac9153c7a1893511)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/definition_catalog_foundation.rs (target/debug/deps/definition_catalog_foundation-a049fd4fb7514953)
+
+running 3 tests
+test application_ports_and_facade_surfaces_are_object_safe ... ok
+test current_boundary_selectors_and_result_kinds_are_closed ... ok
+test effect_summary_ref_set_keeps_first_insertion_order_after_dedup ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/formalization_version_foundation.rs (target/debug/deps/formalization_version_foundation-1c2db06f89b0a3fc)
+
+running 3 tests
+test formalization_version_surfaces_are_object_safe ... ok
+test formalization_version_selectors_and_commit_observations_are_closed ... ok
+test evaluate_flow_maps_save_version_conflict_to_rejected_surface ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests method_library_application
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

@@ -1,0 +1,21 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running tests/distribution_handoff_runtime.rs (target/debug/deps/distribution_handoff_runtime-88d079910008bd0c)
+
+running 15 tests
+test availability_mark_requires_mapper_owned_degraded_decision ... ok
+test degraded_adapter_maps_to_blocked_outcome_with_marker_and_diagnostic ... ok
+test blocked_target_maps_to_blocked_outcome_without_delivery ... ok
+test adjust_requires_loaded_distribution_version_and_preserves_truth_on_conflict ... ok
+test disabled_adapter_persists_blocked_outcome_with_port_diagnostic ... ok
+test publication_failure_does_not_roll_back_accepted_distribution ... ok
+test disabled_target_does_not_call_publisher_or_handoff ... ok
+test handoff_outcome_persistence_failure_stops_later_targets_without_rollback ... ok
+test seam_source_is_part_of_digest_and_commit_unknown_replays_post_commit_once ... ok
+test prepare_without_seam_has_no_candidate_or_post_commit_outcome ... ok
+test prepare_with_seam_commits_candidate_and_duplicate_does_not_rerun_seams ... ok
+test selector_source_mismatch_is_safe_rejected_before_builder_or_mutation ... ok
+test unavailable_target_maps_to_unavailable_outcome_without_delivery ... ok
+test unavailable_adapter_maps_to_unavailable_outcome_without_delivery ... ok
+test publication_outcome_persistence_failure_stops_handoff_without_rolling_back_truth ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

@@ -1,0 +1,9 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running tests/definition_catalog_runtime.rs (target/debug/deps/definition_catalog_runtime-9f7c6f4788c65e65)
+
+running 3 tests
+test catalog_status_persists_visible_to_retired_and_replays_duplicates ... ok
+test definition_lifecycle_persists_and_duplicate_replay_does_not_rerun_mutation ... ok
+test rollback_hides_directly_staged_definition_write ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

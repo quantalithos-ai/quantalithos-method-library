@@ -1,0 +1,5 @@
+Dry run OK
+run_id=20260805T143757Z-commit-05-b
+artifact_root=artifacts/test/20260805T143757Z-commit-05-b
+config_profile=ci-test
+profile_path=config/profiles/ci-test.json
