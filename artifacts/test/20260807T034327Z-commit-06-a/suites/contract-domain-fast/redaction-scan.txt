@@ -1,0 +1,4 @@
+redaction_scan=clean
+scope=commit-06-a contracts/domain carriers and fixtures
+forbidden_field_match=false
+checked=raw/method/provider/archive/report/log body,path,secret,credential,token,stack trace,raw reason,config value,fake-only marker fields

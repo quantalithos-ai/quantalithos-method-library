@@ -3,7 +3,7 @@
 pub mod consumption_material;
 pub mod formal_method_version;
 pub mod method_asset_definition;
-pub mod trace_audit {}
+pub mod trace_audit;
 pub mod relation_distribution {}
 pub mod external_summary {}
 pub mod maintenance {}
@@ -27,4 +27,8 @@ pub use policies::{
     ConsistencyProtectionJudgement, ConsistencyProtectionPolicy, DefinitionUseBoundaryGuard,
     DownstreamConsumptionBoundary, ExternalBodyBoundaryRule, ExternalBodyBoundaryState,
     RelationIntegrityJudgement, RelationIntegrityRule,
+};
+pub use trace_audit::{
+    ConsumptionImpactSummary, MethodAssetAuditTrail, MethodAssetEvidenceLineage,
+    MethodAssetTraceMaterial,
 };

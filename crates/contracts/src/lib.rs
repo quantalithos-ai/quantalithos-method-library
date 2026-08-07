@@ -12,6 +12,7 @@ pub mod jobs;
 pub mod metadata;
 pub mod queries;
 pub mod refs;
+pub mod trace_audit;
 pub mod views;
 
 pub use commands::{MethodLibraryCapabilityKind, MethodLibraryCommandShell};
@@ -46,24 +47,34 @@ pub use formalization::{
 pub use jobs::{MethodLibraryJobShell, MethodLibraryOperationsJobKind};
 pub use queries::MethodLibraryQueryShell;
 pub use refs::{
-    CatalogScopeRef, ConsumptionContextRef, DefinitionUseBoundaryGuardRef, DistributionContextRef,
+    CatalogScopeRef, ConsumptionContextRef, ConsumptionImpactSourceRef,
+    ConsumptionImpactSummaryRef, DefinitionUseBoundaryGuardRef, DistributionContextRef,
     DownstreamConsumptionBoundaryRef, ExternalSourceSummaryRef, FormalMethodAssetVersionRef,
     FormalizationBasisSummaryRef, FormalizationEligibilityRejectionRef,
     FormalizationEligibilityRuleRef, FormalizationStateRef, GovernanceBasisRef,
     MethodAssetAcceptedOperationSummaryRef, MethodAssetAdapterAvailabilityStateRef,
     MethodAssetAdapterSlotRef, MethodAssetApiEntryContextRef, MethodAssetApplicationDispatchRef,
+    MethodAssetAuditCursorRef, MethodAssetAuditEntryRef, MethodAssetAuditTrailRef,
     MethodAssetCatalogEntryRef, MethodAssetConsumptionMaterialCursorRef,
     MethodAssetConsumptionMaterialRef, MethodAssetConsumptionMaterialScopeRef,
     MethodAssetDedupScopeRef, MethodAssetDefinitionRef, MethodAssetDegradedDecisionRef,
     MethodAssetDistributionRef, MethodAssetEffectSummaryRef, MethodAssetEventCandidateAssemblyRef,
-    MethodAssetHandoffBindingStateRef, MethodAssetHandoffMarkerRef, MethodAssetHandoffTargetRef,
-    MethodAssetIdempotencyKeyRef, MethodAssetInfraSafeDiagnosticRef,
+    MethodAssetEvidenceLineageRef, MethodAssetHandoffBindingStateRef, MethodAssetHandoffMarkerRef,
+    MethodAssetHandoffTargetRef, MethodAssetIdempotencyKeyRef, MethodAssetInfraSafeDiagnosticRef,
     MethodAssetOperationContextRef, MethodAssetOperationDigestRef,
     MethodAssetPublicationOutcomeRef, MethodAssetPublisherBindingStateRef, MethodAssetRelationRef,
     MethodAssetReplayMarkerRef, MethodAssetSafeIgnoreReasonRef, MethodAssetSafeRejectReasonRef,
     MethodAssetStoredOperationResultRef, MethodAssetTargetRegistryScopeRef,
+    MethodAssetTraceCursorRef, MethodAssetTraceFreshnessMarkerRef, MethodAssetTraceMaterialRef,
     MethodLibraryTypedBoundaryRef, MethodLibraryTypedBoundaryRefKind,
-    MethodLibraryTypedBoundaryRefKindMismatch,
+    MethodLibraryTypedBoundaryRefKindMismatch, TraceSubjectRef,
+};
+pub use trace_audit::{
+    ConsumptionImpactKind, ConsumptionImpactSafeSummary, ConsumptionImpactSummaryState,
+    MethodAssetAuditEntryRefSet, MethodAssetAuditTrailState, MethodAssetEvidenceLineageRefSet,
+    MethodAssetEvidenceLineageState, MethodAssetEvidenceLineageSummary, MethodAssetSafeReasonRef,
+    MethodAssetTraceMaterialRefSet, MethodAssetTraceMaterialState, MethodAssetTraceSourceRef,
+    MethodAssetTraceSourceRefKindMismatch, MethodAssetTraceSourceRefSet, MethodAssetTraceSummary,
 };
 pub use views::{
     MethodLibraryPublicShell, MethodLibrarySafeMarker, MethodLibrarySafeMarkerKind,

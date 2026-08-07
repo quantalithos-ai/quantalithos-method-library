@@ -42,6 +42,22 @@ pub enum MethodLibraryTypedBoundaryRefKind {
     TraceSubjectRef,
     /// Consumption impact source anchor.
     ConsumptionImpactSourceRef,
+    /// Body-free trace material identity.
+    MethodAssetTraceMaterial,
+    /// Committed trace source cursor.
+    MethodAssetTraceCursor,
+    /// Trace freshness source marker.
+    MethodAssetTraceFreshnessMarker,
+    /// Body-free consumption impact summary identity.
+    ConsumptionImpactSummary,
+    /// Append-only audit trail identity.
+    MethodAssetAuditTrail,
+    /// Safe audit entry identity.
+    MethodAssetAuditEntry,
+    /// Committed audit source cursor.
+    MethodAssetAuditCursor,
+    /// Body-free evidence lineage identity.
+    MethodAssetEvidenceLineage,
     /// Related method asset anchor.
     RelatedMethodAssetRef,
     /// Distribution boundary anchor.
@@ -278,6 +294,56 @@ named_typed_boundary_ref!(
     MethodAssetConsumptionMaterialScopeRef,
     MethodAssetConsumptionMaterialScope,
     "Named typed boundary ref for a method asset consumption material scope."
+);
+named_typed_boundary_ref!(
+    TraceSubjectRef,
+    TraceSubjectRef,
+    "Named typed boundary ref for a trace or audit subject."
+);
+named_typed_boundary_ref!(
+    ConsumptionImpactSourceRef,
+    ConsumptionImpactSourceRef,
+    "Named typed boundary ref for a consumption impact source."
+);
+named_typed_boundary_ref!(
+    MethodAssetTraceMaterialRef,
+    MethodAssetTraceMaterial,
+    "Named typed boundary ref for a method asset trace material."
+);
+named_typed_boundary_ref!(
+    MethodAssetTraceCursorRef,
+    MethodAssetTraceCursor,
+    "Named typed boundary ref for a method asset trace cursor."
+);
+named_typed_boundary_ref!(
+    MethodAssetTraceFreshnessMarkerRef,
+    MethodAssetTraceFreshnessMarker,
+    "Named typed boundary ref for a method asset trace freshness marker."
+);
+named_typed_boundary_ref!(
+    ConsumptionImpactSummaryRef,
+    ConsumptionImpactSummary,
+    "Named typed boundary ref for a consumption impact summary."
+);
+named_typed_boundary_ref!(
+    MethodAssetAuditTrailRef,
+    MethodAssetAuditTrail,
+    "Named typed boundary ref for a method asset audit trail."
+);
+named_typed_boundary_ref!(
+    MethodAssetAuditEntryRef,
+    MethodAssetAuditEntry,
+    "Named typed boundary ref for a safe method asset audit entry."
+);
+named_typed_boundary_ref!(
+    MethodAssetAuditCursorRef,
+    MethodAssetAuditCursor,
+    "Named typed boundary ref for a method asset audit cursor."
+);
+named_typed_boundary_ref!(
+    MethodAssetEvidenceLineageRef,
+    MethodAssetEvidenceLineage,
+    "Named typed boundary ref for a method asset evidence lineage."
 );
 named_typed_boundary_ref!(
     MethodAssetDistributionRef,

@@ -1,0 +1,86 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running unittests src/lib.rs (target/debug/deps/method_library_domain-315841717f63ca89)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/consumption_material.rs (target/debug/deps/consumption_material-80dfdc2f4cd9a406)
+
+running 11 tests
+test active_only_requirement_blocks_superseded_and_retired_versions ... ok
+test boundary_constraints_and_writeback_rejection_stay_body_free ... ok
+test guard_rejects_or_manual_reviews_writeback_by_attempt_kind ... ok
+test material_factory_initializes_prepared_without_downstream_truth ... ok
+test material_invariants_reject_wrong_formal_version_context_or_boundary ... ok
+test boundary_registration_requires_non_empty_allowed_and_forbidden_sets ... ok
+test material_mark_stale_accepts_boundary_reason_when_no_marker_was_loaded ... ok
+test guard_initializes_monitoring_and_records_safe_violation ... ok
+test material_mark_stale_rejects_missing_formal_source_closure ... ok
+test material_applies_copy_only_availability_marker ... ok
+test material_mark_stale_preserves_copy_only_marker_shape ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/domain_foundation.rs (target/debug/deps/domain_foundation-cf84c9b4819f5ceb)
+
+running 3 tests
+test consistency_and_relation_judgements_reject_illegal_follow_up ... ok
+test external_body_rule_enforces_body_free_redline_and_invariants ... ok
+test shared_foundation_shells_require_current_boundary_typed_carriers ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/formal_method_version.rs (target/debug/deps/formal_method_version-9b93edc356bebc88)
+
+running 6 tests
+test basis_summary_rejects_missing_kind_compatible_source ... ok
+test basis_summary_accepts_matching_safe_sources ... ok
+test formalization_state_rejects_invalid_transitions_and_silent_overwrite ... ok
+test formal_version_guards_preserve_active_and_block_retired_or_superseded_reuse ... ok
+test formal_version_requires_stable_definition_and_state_identity ... ok
+test formalization_state_can_block_and_recover_before_establishment ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/method_asset_definition.rs (target/debug/deps/method_asset_definition-a46062502e6a4836)
+
+running 11 tests
+test catalog_create_requires_scope_consistency_and_sets_visible ... ok
+test catalog_reclassify_rejects_non_visible_or_scope_mismatch ... ok
+test catalog_reclassify_updates_scope_classification_and_applicability_together ... ok
+test definition_adjust_preserves_active_and_replaces_summary_and_sources ... ok
+test definition_body_free_requires_no_body_marker ... ok
+test definition_create_initializes_active_lifecycle ... ok
+test catalog_entry_deprecation_sets_status_without_rewriting_identity ... ok
+test catalog_retire_requires_visible_and_preserves_identity ... ok
+test definition_links_catalog_entries_and_source_summaries_without_duplicates ... ok
+test retired_catalog_entry_rejects_deprecation ... ok
+test retired_definition_rejects_adjust_and_retire ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/trace_audit.rs (target/debug/deps/trace_audit-aa907edff1211c21)
+
+running 10 tests
+test audit_append_is_first_seen_and_copies_explicit_cursor ... ok
+test audit_partial_and_unavailable_states_reject_append_without_mutation ... ok
+test impact_rejects_repeat_disposition_same_identity_and_terminal_mutation ... ok
+test impact_disposition_and_supersession_preserve_impact_kind ... ok
+test lineage_links_from_linked_and_partial_without_changing_summary_or_state ... ok
+test lineage_partial_and_body_rejection_follow_exact_terminal_rules ... ok
+test trace_cannot_organize_an_empty_source_set ... ok
+test trace_state_guard_requires_reason_and_preserves_source_truth ... ok
+test unavailable_and_terminal_lineage_reject_links_without_mutation ... ok
+test trace_factory_uses_source_presence_without_synthesizing_reason ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests method_library_domain
+
+running 3 tests
+test crates/domain/src/method_asset_definition.rs - method_asset_definition::MethodAssetCatalogEntry::mark_deprecated (line 251) - compile fail ... ok
+test crates/domain/src/trace_audit.rs - trace_audit::MethodAssetEvidenceLineage::reject_body_candidate (line 322) - compile fail ... ok
+test crates/domain/src/method_asset_definition.rs - method_asset_definition::MethodAssetCatalogEntry::mark_deprecated (line 243) - compile fail ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
